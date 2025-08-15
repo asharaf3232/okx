@@ -198,7 +198,7 @@ async function getAssetPriceExtremes(instId) {
     try {
         const [yearlyCandles, allTimeCandles] = await Promise.all([
             getHistoricalCandles(instId, '1D', 365),
-            getHistoricalCandles(instId, '1M', 1200)
+            getHistoricalCandles(instId, '1M', 240)
         ]);
 
         if (yearlyCandles.length === 0) return null;
