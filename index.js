@@ -518,7 +518,7 @@ async function monitorBalanceChanges() {
         let trackerUpdated = false;
         let stateNeedsUpdate = false;
 
-        // --- 1. مراقبة تغير القيمة الإجمالية للمحفظة مع تنبيه ذكي ---
+        // --- تنبيه تحرك المحفظة الإجمالية مع تحديث فوري ---
         const totalChangePercent = ((currentTotalValue - oldTotalValue) / oldTotalValue) * 100;
         if (Math.abs(totalChangePercent) >= alertSettings.global) {
             const movementText = totalChangePercent > 0 ? 'صعود' : 'هبوط';
@@ -528,11 +528,14 @@ async function monitorBalanceChanges() {
                             `*القيمة السابقة:* \`$${formatNumber(oldTotalValue)}\`\n` +
                             `*القيمة الحالية:* \`$${formatNumber(currentTotalValue)}\``;
             await bot.api.sendMessage(AUTHORIZED_USER_ID, message, { parse_mode: "Markdown" });
+
+            // تحديث القيمة فور الإرسال لمنع التكرار
             priceTracker.totalPortfolioValue = currentTotalValue;
             trackerUpdated = true;
+            await savePriceTracker(priceTracker); // حفظ التحديث سريعًا
         }
 
-        // --- 2. مراقبة تغير سعر كل أصل ---
+        // --- مراقبة تغير سعر كل أصل ---
         for (const asset of newAssets) {
             if (asset.asset === 'USDT' || !asset.price) continue;
             const lastPrice = priceTracker.assets[asset.asset];
@@ -554,7 +557,7 @@ async function monitorBalanceChanges() {
             }
         }
 
-        // --- 3. متابعة وتحليل صفقات المحفظة (شراء، بيع، إغلاق) ---
+        // --- متابعة وتحليل صفقات المحفظة (شراء، بيع، إغلاق) ---
         const allAssetsSet = new Set([...Object.keys(previousBalances), ...Object.keys(currentBalance)]);
         for (const asset of allAssetsSet) {
             if (asset === 'USDT') continue;
@@ -644,6 +647,7 @@ async function monitorBalanceChanges() {
         await sendDebugMessage(`CRITICAL ERROR in monitorBalanceChanges: ${e.message}`);
     }
 }
+
 
 async function trackPositionHighLow() { try { const positions = await loadPositions(); if (Object.keys(positions).length === 0) return; const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) return; let positionsUpdated = false; for (const symbol in positions) { const position = positions[symbol]; const currentPrice = prices[`${symbol}-USDT`]?.price; if (currentPrice) { if (!position.highestPrice || currentPrice > position.highestPrice) { position.highestPrice = currentPrice; positionsUpdated = true; } if (!position.lowestPrice || currentPrice < position.lowestPrice) { position.lowestPrice = currentPrice; positionsUpdated = true; } } } if (positionsUpdated) { await savePositions(positions); await sendDebugMessage("Updated position high/low prices."); } } catch(e) { console.error("CRITICAL ERROR in trackPositionHighLow:", e); } }
 async function checkPriceAlerts() { try { const alerts = await loadAlerts(); if (alerts.length === 0) return; const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) return; const remainingAlerts = []; let triggered = false; for (const alert of alerts) { const currentPrice = prices[alert.instId]?.price; if (currentPrice === undefined) { remainingAlerts.push(alert); continue; } if ((alert.condition === '>' && currentPrice > alert.price) || (alert.condition === '<' && currentPrice < alert.price)) { await bot.api.sendMessage(AUTHORIZED_USER_ID, `🚨 *تنبيه سعر!* \`${alert.instId}\`\nالشرط: ${alert.condition} ${alert.price}\nالسعر الحالي: \`${currentPrice}\``, { parse_mode: "Markdown" }); triggered = true; } else { remainingAlerts.push(alert); } } if (triggered) await saveAlerts(remainingAlerts); } catch (error) { console.error("Error in checkPriceAlerts:", error); } }
