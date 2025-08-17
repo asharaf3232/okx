@@ -483,7 +483,6 @@ async function monitorBalanceChanges() {
         const oldTotalValue = previousState.totalValue || 0;
         const oldUsdtValue = previousBalances['USDT'] || 0;
 
-        // الحصول على قيمة الرصيد الجديدة
         const currentBalance = await okxAdapter.getBalanceForComparison();
         if (!currentBalance) {
             await sendDebugMessage("Could not fetch current balance.");
@@ -508,18 +507,45 @@ async function monitorBalanceChanges() {
             return;
         }
 
-        // ====== إضافة تنبيه تغير قيمة المحفظة الإجمالية ======
         const alertSettings = await loadAlertSettings();
         const globalThresholdPercent = alertSettings.global || 5;
-        if (previousState.totalValue && newTotalValue) {
-            const changePercent = ((newTotalValue - previousState.totalValue) / previousState.totalValue) * 100;
-            if (Math.abs(changePercent) >= globalThresholdPercent) {
-                await bot.api.sendMessage(AUTHORIZED_USER_ID, 
-                    `⚡️ تنبيه: قيمة المحفظة تغيرت بنسبة ${changePercent.toFixed(2)}%\nالقيمة القديمة: $${previousState.totalValue.toFixed(2)}\nالقيمة الجديدة: $${newTotalValue.toFixed(2)}`
-                );
+
+        async function getDynamicThreshold(asset) {
+            const candles = await getHistoricalCandles(`${asset}-USDT`, '1D', 31);
+            if (!candles || candles.length < 2) return 5;
+            let totalChange = 0;
+            for (let i = 1; i < candles.length; i++) {
+                const change = Math.abs((candles[i].close - candles[i - 1].close) / candles[i - 1].close) * 100;
+                totalChange += change;
             }
+            const avgChange = totalChange / (candles.length - 1);
+            return Math.max(avgChange * 1.5, 3);
         }
-        // ===============================================
+
+        async function getPortfolioVolatility() {
+            const history = await loadHistory();
+            if (!history || history.length < 2) return 5;
+            let totalChange = 0;
+            for (let i = 1; i < history.length; i++) {
+                const change = Math.abs((history[i].total - history[i - 1].total) / history[i - 1].total) * 100;
+                totalChange += change;
+            }
+            return Math.max((totalChange / (history.length - 1)) * 1.5, 3);
+        }
+
+        const portfolioVolatilityThreshold = await getPortfolioVolatility();
+        const changePercent = ((newTotalValue - previousState.totalValue) / previousState.totalValue) * 100;
+
+        if (Math.abs(changePercent) >= portfolioVolatilityThreshold) {
+            await bot.api.sendMessage(AUTHORIZED_USER_ID,
+                `⚡️ تنبيه: قيمة المحفظة تغيرت بنسبة ${changePercent.toFixed(2)}%\n` +
+                `القيمة القديمة: $${previousState.totalValue.toFixed(2)}\n` +
+                `القيمة الجديدة: $${newTotalValue.toFixed(2)}`
+            );
+            // تحديث للقيمة فور إرسال التنبيه لمنع تكرار التنبيه لنفس القيمة القديمة
+            await saveBalanceState({ balances: currentBalance, totalValue: newTotalValue });
+            previousState.totalValue = newTotalValue; // تحديث المتغير محليًا أيضاً
+        }
 
         const allAssets = new Set([...Object.keys(previousBalances), ...Object.keys(currentBalance)]);
         let stateNeedsUpdate = false;
@@ -536,6 +562,40 @@ async function monitorBalanceChanges() {
 
             await sendDebugMessage(`Detected change for ${asset}: ${difference}`);
             stateNeedsUpdate = true;
+
+            const alertThreshold = await getDynamicThreshold(asset);
+
+            const lastPrice = previousBalances[asset] ? prices[`${asset}-USDT`]?.price || 0 : 0;
+            const priceChangePercent = lastPrice > 0 ? ((priceData.price - lastPrice) / lastPrice) * 100 : 0;
+
+            if (Math.abs(priceChangePercent) >= alertThreshold) {
+                await bot.api.sendMessage(AUTHORIZED_USER_ID,
+                    `🔔 تنبيه تغير سعر ${asset} بنسبة ${priceChangePercent.toFixed(2)}%\nالسعر الحالي: $${priceData.price.toFixed(4)}`
+                );
+            }
+
+            const ta = await getTechnicalAnalysis(`${asset}-USDT`);
+            if (ta.rsi !== null) {
+                if (ta.rsi > 70) {
+                    await bot.api.sendMessage(AUTHORIZED_USER_ID,
+                        `🔶 تنبيه: ${asset} دخلت منطقة تشبع شرائي (RSI=${ta.rsi.toFixed(2)})`);
+                } else if (ta.rsi < 30) {
+                    await bot.api.sendMessage(AUTHORIZED_USER_ID,
+                        `🔷 تنبيه: ${asset} دخلت منطقة تشبع بيعي (RSI=${ta.rsi.toFixed(2)})`);
+                }
+            }
+
+            const extremes = await getAssetPriceExtremes(`${asset}-USDT`);
+            if (extremes) {
+                if (priceData.price >= extremes.monthly.high) {
+                    await bot.api.sendMessage(AUTHORIZED_USER_ID,
+                        `🚀 كسر صاعد: ${asset} تجاوزت أعلى قمة شهرية $${extremes.monthly.high.toFixed(4)}!`);
+                }
+                if (priceData.price <= extremes.monthly.low) {
+                    await bot.api.sendMessage(AUTHORIZED_USER_ID,
+                        `⚠️ كسر هابط: ${asset} تحت أدنى قاع شهري $${extremes.monthly.low.toFixed(4)}`);
+                }
+            }
 
             const { analysisResult } = await updatePositionAndAnalyze(asset, difference, priceData.price, currAmount, oldTotalValue);
             if (analysisResult.type === 'none') continue;
@@ -590,6 +650,21 @@ async function monitorBalanceChanges() {
                     const confirmationMessage = `*تم إغلاق المركز بنجاح. هل تود نشر الملخص في القناة؟*\n\n${privateMessage}${hiddenMarker}`;
                     await bot.api.sendMessage(AUTHORIZED_USER_ID, confirmationMessage, { parse_mode: "Markdown", reply_markup: confirmationKeyboard });
                 }
+            }
+        }
+
+        const usdtAsset = newAssets.find(a => a.asset === "USDT") || { value: 0 };
+        const cashPercent = newTotalValue > 0 ? (usdtAsset.value / newTotalValue) * 100 : 0;
+        const cryptoAssets = newAssets.filter(a => a.asset !== "USDT");
+
+        if (cashPercent < 8) {
+            await bot.api.sendMessage(AUTHORIZED_USER_ID, `⚡️ تنبيه: السيولة النقدية USDT أقل من 8% من قيمة المحفظة! (${cashPercent.toFixed(2)}%)`);
+        }
+
+        for (const asset of cryptoAssets) {
+            const weight = newTotalValue > 0 ? (asset.value / newTotalValue) * 100 : 0;
+            if (weight > 35) {
+                await bot.api.sendMessage(AUTHORIZED_USER_ID, `⚠️ تنبيه: وزن ${asset.asset} تجاوز 35% من المحفظة (${weight.toFixed(2)}%)`);
             }
         }
 
