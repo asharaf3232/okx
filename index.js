@@ -477,12 +477,11 @@ async function formatPerformanceReport(period, periodLabel, history, btcHistory)
 async function updatePositionAndAnalyze(asset, amountChange, price, newTotalAmount, oldTotalValue) { if (!asset || price === undefined || price === null || isNaN(price)) return { analysisResult: null }; const positions = await loadPositions(); let position = positions[asset]; let analysisResult = { type: 'none', data: {} }; if (amountChange > 0) { const tradeValue = amountChange * price; const entryCapitalPercent = oldTotalValue > 0 ? (tradeValue / oldTotalValue) * 100 : 0; if (!position) { positions[asset] = { totalAmountBought: amountChange, totalCost: tradeValue, avgBuyPrice: price, openDate: new Date().toISOString(), totalAmountSold: 0, realizedValue: 0, highestPrice: price, lowestPrice: price, entryCapitalPercent: entryCapitalPercent, }; } else { position.totalAmountBought += amountChange; position.totalCost += tradeValue; position.avgBuyPrice = position.totalCost / position.totalAmountBought; } analysisResult.type = 'buy'; } else if (amountChange < 0 && position) { const soldAmount = Math.abs(amountChange); position.realizedValue = (position.realizedValue || 0) + (soldAmount * price); position.totalAmountSold = (position.totalAmountSold || 0) + soldAmount; if (newTotalAmount * price < 1) { const totalCost = parseFloat(position.totalCost); const realizedValue = parseFloat(position.realizedValue); const finalPnl = realizedValue - totalCost; const finalPnlPercent = totalCost > 0 ? (finalPnl / totalCost) * 100 : 0; const closeDate = new Date(); const openDate = new Date(position.openDate); const durationDays = (closeDate.getTime() - openDate.getTime()) / (1000 * 60 * 60 * 24); const avgSellPrice = position.totalAmountSold > 0 ? position.realizedValue / position.totalAmountSold : 0; const closeReportData = { asset, pnl: finalPnl, pnlPercent: finalPnlPercent, durationDays, avgBuyPrice: position.avgBuyPrice, avgSellPrice, highestPrice: position.highestPrice, lowestPrice: position.lowestPrice, entryCapitalPercent: position.entryCapitalPercent, exitQuantityPercent: 100 }; await saveClosedTrade(closeReportData); analysisResult = { type: 'close', data: closeReportData }; delete positions[asset]; } else { analysisResult.type = 'sell'; } } await savePositions(positions); analysisResult.data.position = positions[asset] || position; return { analysisResult }; }
 async function monitorBalanceChanges() {
     try {
-        await sendDebugMessage("Checking balance changes...");
-        const previousState = await loadBalanceState();
-        const previousBalances = previousState.balances || {};
-        const oldTotalValue = previousState.totalValue || 0;
-        const oldUsdtValue = previousBalances['USDT'] || 0;
+        await sendDebugMessage("Starting comprehensive portfolio and price monitoring...");
+        const alertSettings = await loadAlertSettings();
+        const priceTracker = await loadPriceTracker();
 
+        // جلب البيانات
         const currentBalance = await okxAdapter.getBalanceForComparison();
         if (!currentBalance) {
             await sendDebugMessage("Could not fetch current balance.");
@@ -495,61 +494,69 @@ async function monitorBalanceChanges() {
             return;
         }
 
-        const { assets: newAssets, total: newTotalValue, usdtValue: newUsdtValue, error } = await okxAdapter.getPortfolio(prices);
-        if (error || newTotalValue === undefined) {
+        const { assets: newAssets, total: currentTotalValue, usdtValue: newUsdtValue, error } = await okxAdapter.getPortfolio(prices);
+        if (error || currentTotalValue === undefined) {
             await sendDebugMessage(`Portfolio fetch error: ${error}`);
             return;
         }
 
-        if (Object.keys(previousBalances).length === 0) {
-            await sendDebugMessage("Initializing first balance state.");
-            await saveBalanceState({ balances: currentBalance, totalValue: newTotalValue });
+        const previousBalances = priceTracker.balances || {};
+        const oldTotalValue = priceTracker.totalPortfolioValue || 0;
+        const oldUsdtValue = previousBalances['USDT'] || 0;
+
+        if (oldTotalValue === 0) {
+            // التهيئة لأول مرة
+            priceTracker.totalPortfolioValue = currentTotalValue;
+            priceTracker.balances = currentBalance;
+            newAssets.forEach(a => {
+                if (a.price) priceTracker.assets[a.asset] = a.price;
+            });
+            await savePriceTracker(priceTracker);
             return;
         }
 
-        const alertSettings = await loadAlertSettings();
-        const globalThresholdPercent = alertSettings.global || 5;
-
-        async function getDynamicThreshold(asset) {
-            const candles = await getHistoricalCandles(`${asset}-USDT`, '1D', 31);
-            if (!candles || candles.length < 2) return 5;
-            let totalChange = 0;
-            for (let i = 1; i < candles.length; i++) {
-                const change = Math.abs((candles[i].close - candles[i - 1].close) / candles[i - 1].close) * 100;
-                totalChange += change;
-            }
-            const avgChange = totalChange / (candles.length - 1);
-            return Math.max(avgChange * 1.5, 3);
-        }
-
-        async function getPortfolioVolatility() {
-            const history = await loadHistory();
-            if (!history || history.length < 2) return 5;
-            let totalChange = 0;
-            for (let i = 1; i < history.length; i++) {
-                const change = Math.abs((history[i].total - history[i - 1].total) / history[i - 1].total) * 100;
-                totalChange += change;
-            }
-            return Math.max((totalChange / (history.length - 1)) * 1.5, 3);
-        }
-
-        const portfolioVolatilityThreshold = await getPortfolioVolatility();
-        const changePercent = ((newTotalValue - previousState.totalValue) / previousState.totalValue) * 100;
-
-        if (Math.abs(changePercent) >= portfolioVolatilityThreshold) {
-            await bot.api.sendMessage(AUTHORIZED_USER_ID,
-                `⚡️ تنبيه: قيمة المحفظة تغيرت بنسبة ${changePercent.toFixed(2)}%\n` +
-                `القيمة القديمة: $${previousState.totalValue.toFixed(2)}\n` +
-                `القيمة الجديدة: $${newTotalValue.toFixed(2)}`
-            );
-            await saveBalanceState({ balances: currentBalance, totalValue: newTotalValue });
-            previousState.totalValue = newTotalValue;
-        }
-
-        const allAssets = new Set([...Object.keys(previousBalances), ...Object.keys(currentBalance)]);
+        let trackerUpdated = false;
         let stateNeedsUpdate = false;
 
-        for (const asset of allAssets) {
+        // --- 1. مراقبة تغير القيمة الإجمالية للمحفظة مع تنبيه ذكي ---
+        const totalChangePercent = ((currentTotalValue - oldTotalValue) / oldTotalValue) * 100;
+        if (Math.abs(totalChangePercent) >= alertSettings.global) {
+            const movementText = totalChangePercent > 0 ? 'صعود' : 'هبوط';
+            const sign = totalChangePercent > 0 ? '+' : '';
+            const message = `📊 *تنبيه حركة للمحفظة الإجمالية!* \n\n` +
+                            `*الحركة:* ${movementText} بنسبة \`${sign}${formatNumber(totalChangePercent)}%\`\n` +
+                            `*القيمة السابقة:* \`$${formatNumber(oldTotalValue)}\`\n` +
+                            `*القيمة الحالية:* \`$${formatNumber(currentTotalValue)}\``;
+            await bot.api.sendMessage(AUTHORIZED_USER_ID, message, { parse_mode: "Markdown" });
+            priceTracker.totalPortfolioValue = currentTotalValue;
+            trackerUpdated = true;
+        }
+
+        // --- 2. مراقبة تغير سعر كل أصل ---
+        for (const asset of newAssets) {
+            if (asset.asset === 'USDT' || !asset.price) continue;
+            const lastPrice = priceTracker.assets[asset.asset];
+            if (!lastPrice) {
+                priceTracker.assets[asset.asset] = asset.price;
+                trackerUpdated = true;
+                continue;
+            }
+
+            const changePercent = ((asset.price - lastPrice) / lastPrice) * 100;
+            const threshold = alertSettings.overrides[asset.asset] || alertSettings.global;
+
+            if (Math.abs(changePercent) >= threshold) {
+                const movementText = changePercent > 0 ? 'صعود' : 'هبوط';
+                const message = `📈 *تنبيه حركة سعر لأصل!* \`${asset.asset}\`\n*الحركة:* ${movementText} بنسبة \`${formatNumber(changePercent)}%\`\n*السعر الحالي:* \`$${formatNumber(asset.price, 4)}\``;
+                await bot.api.sendMessage(AUTHORIZED_USER_ID, message, { parse_mode: "Markdown" });
+                priceTracker.assets[asset.asset] = asset.price;
+                trackerUpdated = true;
+            }
+        }
+
+        // --- 3. متابعة وتحليل صفقات المحفظة (شراء، بيع، إغلاق) ---
+        const allAssetsSet = new Set([...Object.keys(previousBalances), ...Object.keys(currentBalance)]);
+        for (const asset of allAssetsSet) {
             if (asset === 'USDT') continue;
 
             const prevAmount = previousBalances[asset] || 0;
@@ -562,48 +569,14 @@ async function monitorBalanceChanges() {
             await sendDebugMessage(`Detected change for ${asset}: ${difference}`);
             stateNeedsUpdate = true;
 
-            const alertThreshold = await getDynamicThreshold(asset);
-
-            const lastPrice = previousBalances[asset] ? prices[`${asset}-USDT`]?.price || 0 : 0;
-            const priceChangePercent = lastPrice > 0 ? ((priceData.price - lastPrice) / lastPrice) * 100 : 0;
-
-            if (Math.abs(priceChangePercent) >= alertThreshold) {
-                await bot.api.sendMessage(AUTHORIZED_USER_ID,
-                    `🔔 تنبيه تغير سعر ${asset} بنسبة ${priceChangePercent.toFixed(2)}%\nالسعر الحالي: $${priceData.price.toFixed(4)}`
-                );
-            }
-
-            const ta = await getTechnicalAnalysis(`${asset}-USDT`);
-            if (ta.rsi !== null) {
-                if (ta.rsi > 70) {
-                    await bot.api.sendMessage(AUTHORIZED_USER_ID,
-                        `🔶 تنبيه: ${asset} دخلت منطقة تشبع شرائي (RSI=${ta.rsi.toFixed(2)})`);
-                } else if (ta.rsi < 30) {
-                    await bot.api.sendMessage(AUTHORIZED_USER_ID,
-                        `🔷 تنبيه: ${asset} دخلت منطقة تشبع بيعي (RSI=${ta.rsi.toFixed(2)})`);
-                }
-            }
-
-            const extremes = await getAssetPriceExtremes(`${asset}-USDT`);
-            if (extremes) {
-                if (priceData.price >= extremes.monthly.high) {
-                    await bot.api.sendMessage(AUTHORIZED_USER_ID,
-                        `🚀 كسر صاعد: ${asset} تجاوزت أعلى قمة شهرية $${extremes.monthly.high.toFixed(4)}!`);
-                }
-                if (priceData.price <= extremes.monthly.low) {
-                    await bot.api.sendMessage(AUTHORIZED_USER_ID,
-                        `⚠️ كسر هابط: ${asset} تحت أدنى قاع شهري $${extremes.monthly.low.toFixed(4)}`);
-                }
-            }
-
             const { analysisResult } = await updatePositionAndAnalyze(asset, difference, priceData.price, currAmount, oldTotalValue);
             if (analysisResult.type === 'none') continue;
 
             const tradeValue = Math.abs(difference) * priceData.price;
             const newAssetData = newAssets.find(a => a.asset === asset);
             const newAssetValue = newAssetData ? newAssetData.value : 0;
-            const newAssetWeight = newTotalValue > 0 ? (newAssetValue / newTotalValue) * 100 : 0;
-            const newCashPercent = newTotalValue > 0 ? (newUsdtValue / newTotalValue) * 100 : 0;
+            const newAssetWeight = currentTotalValue > 0 ? (newAssetValue / currentTotalValue) * 100 : 0;
+            const newCashPercent = currentTotalValue > 0 ? (newUsdtValue / currentTotalValue) * 100 : 0;
 
             const baseDetails = {
                 asset,
@@ -652,11 +625,17 @@ async function monitorBalanceChanges() {
             }
         }
 
-        // تم حذف تنبيهات السيولة ووزن الأصول بناء على طلبك
+        // حفظ تحديثات priceTracker بعد الإشعارات والمتابعة
+        if (trackerUpdated) {
+            priceTracker.balances = currentBalance;
+            await savePriceTracker(priceTracker);
+            await sendDebugMessage("Price tracker updated.");
+        }
 
+        // حفظ حالة الأرصدة عند التغيرات المكتشفة
         if (stateNeedsUpdate) {
-            await saveBalanceState({ balances: currentBalance, totalValue: newTotalValue });
-            await sendDebugMessage("State updated after balance change.");
+            await saveBalanceState({ balances: currentBalance, totalValue: currentTotalValue });
+            await sendDebugMessage("Balance state updated after changes.");
         } else {
             await sendDebugMessage("No significant balance changes detected.");
         }
@@ -665,7 +644,6 @@ async function monitorBalanceChanges() {
         await sendDebugMessage(`CRITICAL ERROR in monitorBalanceChanges: ${e.message}`);
     }
 }
-
 
 async function trackPositionHighLow() { try { const positions = await loadPositions(); if (Object.keys(positions).length === 0) return; const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) return; let positionsUpdated = false; for (const symbol in positions) { const position = positions[symbol]; const currentPrice = prices[`${symbol}-USDT`]?.price; if (currentPrice) { if (!position.highestPrice || currentPrice > position.highestPrice) { position.highestPrice = currentPrice; positionsUpdated = true; } if (!position.lowestPrice || currentPrice < position.lowestPrice) { position.lowestPrice = currentPrice; positionsUpdated = true; } } } if (positionsUpdated) { await savePositions(positions); await sendDebugMessage("Updated position high/low prices."); } } catch(e) { console.error("CRITICAL ERROR in trackPositionHighLow:", e); } }
 async function checkPriceAlerts() { try { const alerts = await loadAlerts(); if (alerts.length === 0) return; const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) return; const remainingAlerts = []; let triggered = false; for (const alert of alerts) { const currentPrice = prices[alert.instId]?.price; if (currentPrice === undefined) { remainingAlerts.push(alert); continue; } if ((alert.condition === '>' && currentPrice > alert.price) || (alert.condition === '<' && currentPrice < alert.price)) { await bot.api.sendMessage(AUTHORIZED_USER_ID, `🚨 *تنبيه سعر!* \`${alert.instId}\`\nالشرط: ${alert.condition} ${alert.price}\nالسعر الحالي: \`${currentPrice}\``, { parse_mode: "Markdown" }); triggered = true; } else { remainingAlerts.push(alert); } } if (triggered) await saveAlerts(remainingAlerts); } catch (error) { console.error("Error in checkPriceAlerts:", error); } }
