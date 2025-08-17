@@ -542,9 +542,8 @@ async function monitorBalanceChanges() {
                 `القيمة القديمة: $${previousState.totalValue.toFixed(2)}\n` +
                 `القيمة الجديدة: $${newTotalValue.toFixed(2)}`
             );
-            // تحديث للقيمة فور إرسال التنبيه لمنع تكرار التنبيه لنفس القيمة القديمة
             await saveBalanceState({ balances: currentBalance, totalValue: newTotalValue });
-            previousState.totalValue = newTotalValue; // تحديث المتغير محليًا أيضاً
+            previousState.totalValue = newTotalValue;
         }
 
         const allAssets = new Set([...Object.keys(previousBalances), ...Object.keys(currentBalance)]);
@@ -653,20 +652,7 @@ async function monitorBalanceChanges() {
             }
         }
 
-        const usdtAsset = newAssets.find(a => a.asset === "USDT") || { value: 0 };
-        const cashPercent = newTotalValue > 0 ? (usdtAsset.value / newTotalValue) * 100 : 0;
-        const cryptoAssets = newAssets.filter(a => a.asset !== "USDT");
-
-        if (cashPercent < 8) {
-            await bot.api.sendMessage(AUTHORIZED_USER_ID, `⚡️ تنبيه: السيولة النقدية USDT أقل من 8% من قيمة المحفظة! (${cashPercent.toFixed(2)}%)`);
-        }
-
-        for (const asset of cryptoAssets) {
-            const weight = newTotalValue > 0 ? (asset.value / newTotalValue) * 100 : 0;
-            if (weight > 35) {
-                await bot.api.sendMessage(AUTHORIZED_USER_ID, `⚠️ تنبيه: وزن ${asset.asset} تجاوز 35% من المحفظة (${weight.toFixed(2)}%)`);
-            }
-        }
+        // تم حذف تنبيهات السيولة ووزن الأصول بناء على طلبك
 
         if (stateNeedsUpdate) {
             await saveBalanceState({ balances: currentBalance, totalValue: newTotalValue });
@@ -679,6 +665,7 @@ async function monitorBalanceChanges() {
         await sendDebugMessage(`CRITICAL ERROR in monitorBalanceChanges: ${e.message}`);
     }
 }
+
 
 async function trackPositionHighLow() { try { const positions = await loadPositions(); if (Object.keys(positions).length === 0) return; const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) return; let positionsUpdated = false; for (const symbol in positions) { const position = positions[symbol]; const currentPrice = prices[`${symbol}-USDT`]?.price; if (currentPrice) { if (!position.highestPrice || currentPrice > position.highestPrice) { position.highestPrice = currentPrice; positionsUpdated = true; } if (!position.lowestPrice || currentPrice < position.lowestPrice) { position.lowestPrice = currentPrice; positionsUpdated = true; } } } if (positionsUpdated) { await savePositions(positions); await sendDebugMessage("Updated position high/low prices."); } } catch(e) { console.error("CRITICAL ERROR in trackPositionHighLow:", e); } }
 async function checkPriceAlerts() { try { const alerts = await loadAlerts(); if (alerts.length === 0) return; const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) return; const remainingAlerts = []; let triggered = false; for (const alert of alerts) { const currentPrice = prices[alert.instId]?.price; if (currentPrice === undefined) { remainingAlerts.push(alert); continue; } if ((alert.condition === '>' && currentPrice > alert.price) || (alert.condition === '<' && currentPrice < alert.price)) { await bot.api.sendMessage(AUTHORIZED_USER_ID, `🚨 *تنبيه سعر!* \`${alert.instId}\`\nالشرط: ${alert.condition} ${alert.price}\nالسعر الحالي: \`${currentPrice}\``, { parse_mode: "Markdown" }); triggered = true; } else { remainingAlerts.push(alert); } } if (triggered) await saveAlerts(remainingAlerts); } catch (error) { console.error("Error in checkPriceAlerts:", error); } }
