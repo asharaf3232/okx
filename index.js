@@ -475,7 +475,136 @@ async function formatPerformanceReport(period, periodLabel, history, btcHistory)
 // SECTION 4: BACKGROUND JOBS & DYNAMIC MANAGEMENT
 // =================================================================
 async function updatePositionAndAnalyze(asset, amountChange, price, newTotalAmount, oldTotalValue) { if (!asset || price === undefined || price === null || isNaN(price)) return { analysisResult: null }; const positions = await loadPositions(); let position = positions[asset]; let analysisResult = { type: 'none', data: {} }; if (amountChange > 0) { const tradeValue = amountChange * price; const entryCapitalPercent = oldTotalValue > 0 ? (tradeValue / oldTotalValue) * 100 : 0; if (!position) { positions[asset] = { totalAmountBought: amountChange, totalCost: tradeValue, avgBuyPrice: price, openDate: new Date().toISOString(), totalAmountSold: 0, realizedValue: 0, highestPrice: price, lowestPrice: price, entryCapitalPercent: entryCapitalPercent, }; } else { position.totalAmountBought += amountChange; position.totalCost += tradeValue; position.avgBuyPrice = position.totalCost / position.totalAmountBought; } analysisResult.type = 'buy'; } else if (amountChange < 0 && position) { const soldAmount = Math.abs(amountChange); position.realizedValue = (position.realizedValue || 0) + (soldAmount * price); position.totalAmountSold = (position.totalAmountSold || 0) + soldAmount; if (newTotalAmount * price < 1) { const totalCost = parseFloat(position.totalCost); const realizedValue = parseFloat(position.realizedValue); const finalPnl = realizedValue - totalCost; const finalPnlPercent = totalCost > 0 ? (finalPnl / totalCost) * 100 : 0; const closeDate = new Date(); const openDate = new Date(position.openDate); const durationDays = (closeDate.getTime() - openDate.getTime()) / (1000 * 60 * 60 * 24); const avgSellPrice = position.totalAmountSold > 0 ? position.realizedValue / position.totalAmountSold : 0; const closeReportData = { asset, pnl: finalPnl, pnlPercent: finalPnlPercent, durationDays, avgBuyPrice: position.avgBuyPrice, avgSellPrice, highestPrice: position.highestPrice, lowestPrice: position.lowestPrice, entryCapitalPercent: position.entryCapitalPercent, exitQuantityPercent: 100 }; await saveClosedTrade(closeReportData); analysisResult = { type: 'close', data: closeReportData }; delete positions[asset]; } else { analysisResult.type = 'sell'; } } await savePositions(positions); analysisResult.data.position = positions[asset] || position; return { analysisResult }; }
-async function monitorBalanceChanges() { try { await sendDebugMessage("Checking balance changes..."); const previousState = await loadBalanceState(); const previousBalances = previousState.balances || {}; const oldTotalValue = previousState.totalValue || 0; const oldUsdtValue = previousBalances['USDT'] || 0; const currentBalance = await okxAdapter.getBalanceForComparison(); if (!currentBalance) { await sendDebugMessage("Could not fetch current balance."); return; } const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) { await sendDebugMessage("Could not fetch market prices."); return; } const { assets: newAssets, total: newTotalValue, usdtValue: newUsdtValue, error } = await okxAdapter.getPortfolio(prices); if (error || newTotalValue === undefined) { await sendDebugMessage(`Portfolio fetch error: ${error}`); return; } if (Object.keys(previousBalances).length === 0) { await sendDebugMessage("Initializing first balance state."); await saveBalanceState({ balances: currentBalance, totalValue: newTotalValue }); return; } const allAssets = new Set([...Object.keys(previousBalances), ...Object.keys(currentBalance)]); let stateNeedsUpdate = false; for (const asset of allAssets) { if (asset === 'USDT') continue; const prevAmount = previousBalances[asset] || 0; const currAmount = currentBalance[asset] || 0; const difference = currAmount - prevAmount; const priceData = prices[`${asset}-USDT`]; if (!priceData || !priceData.price || isNaN(priceData.price) || Math.abs(difference * priceData.price) < 1) continue; await sendDebugMessage(`Detected change for ${asset}: ${difference}`); stateNeedsUpdate = true; const { analysisResult } = await updatePositionAndAnalyze(asset, difference, priceData.price, currAmount, oldTotalValue); if (analysisResult.type === 'none') continue; const tradeValue = Math.abs(difference) * priceData.price; const newAssetData = newAssets.find(a => a.asset === asset); const newAssetValue = newAssetData ? newAssetData.value : 0; const newAssetWeight = newTotalValue > 0 ? (newAssetValue / newTotalValue) * 100 : 0; const newCashPercent = newTotalValue > 0 ? (newUsdtValue / newTotalValue) * 100 : 0; const baseDetails = { asset, price: priceData.price, amountChange: difference, tradeValue, oldTotalValue, newAssetWeight, newUsdtValue, newCashPercent, oldUsdtValue, position: analysisResult.data.position }; const settings = await loadSettings(); let privateMessage, publicMessage; if (analysisResult.type === 'buy') { privateMessage = formatPrivateBuy(baseDetails); publicMessage = formatPublicBuy(baseDetails); await bot.api.sendMessage(AUTHORIZED_USER_ID, privateMessage, { parse_mode: "Markdown" }); if (settings.autoPostToChannel) { await bot.api.sendMessage(process.env.TARGET_CHANNEL_ID, publicMessage, { parse_mode: "Markdown" }); } } else if (analysisResult.type === 'sell') { privateMessage = formatPrivateSell(baseDetails); publicMessage = formatPublicSell(baseDetails); await bot.api.sendMessage(AUTHORIZED_USER_ID, privateMessage, { parse_mode: "Markdown" }); if (settings.autoPostToChannel) { await bot.api.sendMessage(process.env.TARGET_CHANNEL_ID, publicMessage, { parse_mode: "Markdown" }); } } else if (analysisResult.type === 'close') { privateMessage = formatPrivateCloseReport(analysisResult.data); publicMessage = formatPublicClose(analysisResult.data); if (settings.autoPostToChannel) { await bot.api.sendMessage(process.env.TARGET_CHANNEL_ID, publicMessage, { parse_mode: "Markdown" }); await bot.api.sendMessage(AUTHORIZED_USER_ID, privateMessage, { parse_mode: "Markdown" }); } else { const confirmationKeyboard = new InlineKeyboard().text("✅ نعم، انشر التقرير", "publish_report").text("❌ لا، تجاهل", "ignore_report"); const hiddenMarker = `\n<report>${JSON.stringify(publicMessage)}</report>`; const confirmationMessage = `*تم إغلاق المركز بنجاح. هل تود نشر الملخص في القناة؟*\n\n${privateMessage}${hiddenMarker}`; await bot.api.sendMessage(AUTHORIZED_USER_ID, confirmationMessage, { parse_mode: "Markdown", reply_markup: confirmationKeyboard }); } } } if (stateNeedsUpdate) { await saveBalanceState({ balances: currentBalance, totalValue: newTotalValue }); await sendDebugMessage("State updated after balance change."); } else { await sendDebugMessage("No significant balance changes detected."); } } catch (e) { console.error("CRITICAL ERROR in monitorBalanceChanges:", e); await sendDebugMessage(`CRITICAL ERROR in monitorBalanceChanges: ${e.message}`); } }
+async function monitorBalanceChanges() {
+    try {
+        await sendDebugMessage("Checking balance changes...");
+        const previousState = await loadBalanceState();
+        const previousBalances = previousState.balances || {};
+        const oldTotalValue = previousState.totalValue || 0;
+        const oldUsdtValue = previousBalances['USDT'] || 0;
+
+        // الحصول على قيمة الرصيد الجديدة
+        const currentBalance = await okxAdapter.getBalanceForComparison();
+        if (!currentBalance) {
+            await sendDebugMessage("Could not fetch current balance.");
+            return;
+        }
+
+        const prices = await okxAdapter.getMarketPrices();
+        if (!prices || prices.error) {
+            await sendDebugMessage("Could not fetch market prices.");
+            return;
+        }
+
+        const { assets: newAssets, total: newTotalValue, usdtValue: newUsdtValue, error } = await okxAdapter.getPortfolio(prices);
+        if (error || newTotalValue === undefined) {
+            await sendDebugMessage(`Portfolio fetch error: ${error}`);
+            return;
+        }
+
+        if (Object.keys(previousBalances).length === 0) {
+            await sendDebugMessage("Initializing first balance state.");
+            await saveBalanceState({ balances: currentBalance, totalValue: newTotalValue });
+            return;
+        }
+
+        // ====== إضافة تنبيه تغير قيمة المحفظة الإجمالية ======
+        const alertSettings = await loadAlertSettings();
+        const globalThresholdPercent = alertSettings.global || 5;
+        if (previousState.totalValue && newTotalValue) {
+            const changePercent = ((newTotalValue - previousState.totalValue) / previousState.totalValue) * 100;
+            if (Math.abs(changePercent) >= globalThresholdPercent) {
+                await bot.api.sendMessage(AUTHORIZED_USER_ID, 
+                    `⚡️ تنبيه: قيمة المحفظة تغيرت بنسبة ${changePercent.toFixed(2)}%\nالقيمة القديمة: $${previousState.totalValue.toFixed(2)}\nالقيمة الجديدة: $${newTotalValue.toFixed(2)}`
+                );
+            }
+        }
+        // ===============================================
+
+        const allAssets = new Set([...Object.keys(previousBalances), ...Object.keys(currentBalance)]);
+        let stateNeedsUpdate = false;
+
+        for (const asset of allAssets) {
+            if (asset === 'USDT') continue;
+
+            const prevAmount = previousBalances[asset] || 0;
+            const currAmount = currentBalance[asset] || 0;
+            const difference = currAmount - prevAmount;
+
+            const priceData = prices[`${asset}-USDT`];
+            if (!priceData || !priceData.price || isNaN(priceData.price) || Math.abs(difference * priceData.price) < 1) continue;
+
+            await sendDebugMessage(`Detected change for ${asset}: ${difference}`);
+            stateNeedsUpdate = true;
+
+            const { analysisResult } = await updatePositionAndAnalyze(asset, difference, priceData.price, currAmount, oldTotalValue);
+            if (analysisResult.type === 'none') continue;
+
+            const tradeValue = Math.abs(difference) * priceData.price;
+            const newAssetData = newAssets.find(a => a.asset === asset);
+            const newAssetValue = newAssetData ? newAssetData.value : 0;
+            const newAssetWeight = newTotalValue > 0 ? (newAssetValue / newTotalValue) * 100 : 0;
+            const newCashPercent = newTotalValue > 0 ? (newUsdtValue / newTotalValue) * 100 : 0;
+
+            const baseDetails = {
+                asset,
+                price: priceData.price,
+                amountChange: difference,
+                tradeValue,
+                oldTotalValue,
+                newAssetWeight,
+                newUsdtValue,
+                newCashPercent,
+                oldUsdtValue,
+                position: analysisResult.data.position
+            };
+
+            const settings = await loadSettings();
+            let privateMessage, publicMessage;
+
+            if (analysisResult.type === 'buy') {
+                privateMessage = formatPrivateBuy(baseDetails);
+                publicMessage = formatPublicBuy(baseDetails);
+                await bot.api.sendMessage(AUTHORIZED_USER_ID, privateMessage, { parse_mode: "Markdown" });
+                if (settings.autoPostToChannel) {
+                    await bot.api.sendMessage(process.env.TARGET_CHANNEL_ID, publicMessage, { parse_mode: "Markdown" });
+                }
+            } else if (analysisResult.type === 'sell') {
+                privateMessage = formatPrivateSell(baseDetails);
+                publicMessage = formatPublicSell(baseDetails);
+                await bot.api.sendMessage(AUTHORIZED_USER_ID, privateMessage, { parse_mode: "Markdown" });
+                if (settings.autoPostToChannel) {
+                    await bot.api.sendMessage(process.env.TARGET_CHANNEL_ID, publicMessage, { parse_mode: "Markdown" });
+                }
+            } else if (analysisResult.type === 'close') {
+                privateMessage = formatPrivateCloseReport(analysisResult.data);
+                publicMessage = formatPublicClose(analysisResult.data);
+                if (settings.autoPostToChannel) {
+                    await bot.api.sendMessage(process.env.TARGET_CHANNEL_ID, publicMessage, { parse_mode: "Markdown" });
+                    await bot.api.sendMessage(AUTHORIZED_USER_ID, privateMessage, { parse_mode: "Markdown" });
+                } else {
+                    const confirmationKeyboard = new InlineKeyboard()
+                        .text("✅ نعم، انشر التقرير", "publish_report")
+                        .text("❌ لا، تجاهل", "ignore_report");
+                    const hiddenMarker = `\n<report>${JSON.stringify(publicMessage)}</report>`;
+                    const confirmationMessage = `*تم إغلاق المركز بنجاح. هل تود نشر الملخص في القناة؟*\n\n${privateMessage}${hiddenMarker}`;
+                    await bot.api.sendMessage(AUTHORIZED_USER_ID, confirmationMessage, { parse_mode: "Markdown", reply_markup: confirmationKeyboard });
+                }
+            }
+        }
+
+        if (stateNeedsUpdate) {
+            await saveBalanceState({ balances: currentBalance, totalValue: newTotalValue });
+            await sendDebugMessage("State updated after balance change.");
+        } else {
+            await sendDebugMessage("No significant balance changes detected.");
+        }
+    } catch (e) {
+        console.error("CRITICAL ERROR in monitorBalanceChanges:", e);
+        await sendDebugMessage(`CRITICAL ERROR in monitorBalanceChanges: ${e.message}`);
+    }
+}
+
 async function trackPositionHighLow() { try { const positions = await loadPositions(); if (Object.keys(positions).length === 0) return; const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) return; let positionsUpdated = false; for (const symbol in positions) { const position = positions[symbol]; const currentPrice = prices[`${symbol}-USDT`]?.price; if (currentPrice) { if (!position.highestPrice || currentPrice > position.highestPrice) { position.highestPrice = currentPrice; positionsUpdated = true; } if (!position.lowestPrice || currentPrice < position.lowestPrice) { position.lowestPrice = currentPrice; positionsUpdated = true; } } } if (positionsUpdated) { await savePositions(positions); await sendDebugMessage("Updated position high/low prices."); } } catch(e) { console.error("CRITICAL ERROR in trackPositionHighLow:", e); } }
 async function checkPriceAlerts() { try { const alerts = await loadAlerts(); if (alerts.length === 0) return; const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) return; const remainingAlerts = []; let triggered = false; for (const alert of alerts) { const currentPrice = prices[alert.instId]?.price; if (currentPrice === undefined) { remainingAlerts.push(alert); continue; } if ((alert.condition === '>' && currentPrice > alert.price) || (alert.condition === '<' && currentPrice < alert.price)) { await bot.api.sendMessage(AUTHORIZED_USER_ID, `🚨 *تنبيه سعر!* \`${alert.instId}\`\nالشرط: ${alert.condition} ${alert.price}\nالسعر الحالي: \`${currentPrice}\``, { parse_mode: "Markdown" }); triggered = true; } else { remainingAlerts.push(alert); } } if (triggered) await saveAlerts(remainingAlerts); } catch (error) { console.error("Error in checkPriceAlerts:", error); } }
 async function checkPriceMovements() { try { await sendDebugMessage("Checking price movements..."); const alertSettings = await loadAlertSettings(); const priceTracker = await loadPriceTracker(); const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) return; const { assets, total: currentTotalValue, error } = await okxAdapter.getPortfolio(prices); if (error || currentTotalValue === undefined) return; if (priceTracker.totalPortfolioValue === 0) { priceTracker.totalPortfolioValue = currentTotalValue; assets.forEach(a => { if (a.price) priceTracker.assets[a.asset] = a.price; }); await savePriceTracker(priceTracker); return; } let trackerUpdated = false; for (const asset of assets) { if (asset.asset === 'USDT' || !asset.price) continue; const lastPrice = priceTracker.assets[asset.asset]; if (lastPrice) { const changePercent = ((asset.price - lastPrice) / lastPrice) * 100; const threshold = alertSettings.overrides[asset.asset] || alertSettings.global; if (Math.abs(changePercent) >= threshold) { const movementText = changePercent > 0 ? 'صعود' : 'هبوط'; const message = `📈 *تنبيه حركة سعر لأصل!* \`${asset.asset}\`\n*الحركة:* ${movementText} بنسبة \`${formatNumber(changePercent)}%\`\n*السعر الحالي:* \`$${formatNumber(asset.price, 4)}\``; await bot.api.sendMessage(AUTHORIZED_USER_ID, message, { parse_mode: "Markdown" }); priceTracker.assets[asset.asset] = asset.price; trackerUpdated = true; } } else { priceTracker.assets[asset.asset] = asset.price; trackerUpdated = true; } } if (trackerUpdated) await savePriceTracker(priceTracker); } catch (e) { console.error("CRITICAL ERROR in checkPriceMovements:", e); } }
