@@ -781,63 +781,45 @@ async function formatDailyCopyReport() {
     return report;
 }
 async function runDailyReportJob() { try { await sendDebugMessage("Running daily copy-trading report job..."); const report = await formatDailyCopyReport(); if (report.startsWith("📊 لم يتم إغلاق أي صفقات")) { await bot.api.sendMessage(AUTHORIZED_USER_ID, report); } else { await bot.api.sendMessage(process.env.TARGET_CHANNEL_ID, report); await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ تم إرسال تقرير النسخ اليومي إلى القناة بنجاح."); } } catch(e) { console.error("Error in runDailyReportJob:", e); await bot.api.sendMessage(AUTHORIZED_USER_ID, `❌ حدث خطأ أثناء إنشاء تقرير النسخ اليومي: ${e.message}`); } }
-async function generateAndSendCumulativeReport(ctx, asset) { try { const trades = await getCollection("tradeHistory").find({ asset: asset }).toArray(); if (trades.length === 0) { await ctx.reply(`ℹ️ لا يوجد سجل صفقات مغلقة لعملة *${asset}*.`, { parse_mode: "Markdown" }); return; } const totalPnl = trades.reduce((sum, trade) => sum + (trade.pnl || 0), 0); const totalRoi = trades.reduce((sum, trade) => sum + (trade.pnlPercent || 0), 0); const avgRoi = totalRoi / trades.length; const winningTrades = trades.filter(t => (t.pnl || 0) > 0).length; const winRate = (winningTrades / trades.length) * 100; const bestTrade = trades.reduce((max, trade) => (trade.pnlPercent || 0) > (max.pnlPercent || 0) ? trade : max, trades[0]); const worstTrade = trades.reduce((min, trade) => (trade.pnlPercent || 0) < (min.pnlPercent || 0) ? trade : min, trades[0]); const impactSign = totalPnl >= 0 ? '+' : ''; const impactEmoji = totalPnl >= 0 ? '🟢' : '🔴'; const winRateEmoji = winRate >= 50 ? '✅' : '⚠️'; let report = `*تحليل الأثر التراكمي | ${asset}* 🔬\n\n`; report += `*الخلاصة الاستراتيجية:*\n`; report += `تداولاتك في *${asset}* أضافت ما قيمته \`${impactSign}$${formatNumber(totalPnl)}\` ${impactEmoji} إلى محفظتك بشكل تراكمي.\n\n`; report += `*ملخص الأداء التاريخي:*\n`; report += ` ▪️ *إجمالي الصفقات:* \`${trades.length}\`\n`; report += ` ▪️ *معدل النجاح (Win Rate):* \`${formatNumber(winRate)}%\` ${winRateEmoji}\n`; report += ` ▪️ *متوسط العائد (ROI):* \`${formatNumber(avgRoi)}%\`\n\n`; report += `*أبرز الصفقات:*\n`; report += ` 🏆 *أفضل صفقة:* ربح بنسبة \`${formatNumber(bestTrade.pnlPercent)}%\`\n`; report += ` 💔 *أسوأ صفقة:* ${worstTrade.pnlPercent < 0 ? 'خسارة' : 'ربح'} بنسبة \`${formatNumber(worstTrade.pnlPercent)}%\`\n\n`; report += `*توصية استراتيجية خاصة:*\n`; if (avgRoi > 5 && winRate > 60) { report += `أداء *${asset}* يتفوق على المتوسط بشكل واضح. قد تفكر في زيادة حجم صفقاتك المستقبلية فيها.`; } else if (totalPnl < 0) { report += `أداء *${asset}* سلبي. قد ترغب في مراجعة استراتيجيتك لهذه العملة أو تقليل المخاطرة فيها.`; } else { report += `أداء *${asset}* يعتبر ضمن النطاق المقبول. استمر في المراقبة والتحليل.`; } await ctx.reply(report, { parse_mode: "Markdown" }); } catch(e) { console.error(`Error generating cumulative report for ${asset}:`, e); await ctx.reply("❌ حدث خطأ أثناء إنشاء التقرير."); }
-/* =================================================================
-   WHAT-IF ANALYSIS (لو كنت محتفظ بالصفقات المغلقة)
-   ================================================================= */
-async function analyzeClosedPositionsAsIfHeld(days = 30) {
+async function generateAndSendCumulativeReport(ctx, asset) { try { const trades = await getCollection("tradeHistory").find({ asset: asset }).toArray(); if (trades.length === 0) { await ctx.reply(`ℹ️ لا يوجد سجل صفقات مغلقة لعملة *${asset}*.`, { parse_mode: "Markdown" }); return; } const totalPnl = trades.reduce((sum, trade) => sum + (trade.pnl || 0), 0); const totalRoi = trades.reduce((sum, trade) => sum + (trade.pnlPercent || 0), 0); const avgRoi = totalRoi / trades.length; const winningTrades = trades.filter(t => (t.pnl || 0) > 0).length; const winRate = (winningTrades / trades.length) * 100; const bestTrade = trades.reduce((max, trade) => (trade.pnlPercent || 0) > (max.pnlPercent || 0) ? trade : max, trades[0]); const worstTrade = trades.reduce((min, trade) => (trade.pnlPercent || 0) < (min.pnlPercent || 0) ? trade : min, trades[0]); const impactSign = totalPnl >= 0 ? '+' : ''; const impactEmoji = totalPnl >= 0 ? '🟢' : '🔴'; const winRateEmoji = winRate >= 50 ? '✅' : '⚠️'; let report = `*تحليل الأثر التراكمي | ${asset}* 🔬\n\n`; report += `*الخلاصة الاستراتيجية:*\n`; report += `تداولاتك في *${asset}* أضافت ما قيمته \`${impactSign}$${formatNumber(totalPnl)}\` ${impactEmoji} إلى محفظتك بشكل تراكمي.\n\n`; report += `*ملخص الأداء التاريخي:*\n`; report += ` ▪️ *إجمالي الصفقات:* \`${trades.length}\`\n`; report += ` ▪️ *معدل النجاح (Win Rate):* \`${formatNumber(winRate)}%\` ${winRateEmoji}\n`; report += ` ▪️ *متوسط العائد (ROI):* \`${formatNumber(avgRoi)}%\`\n\n`; report += `*أبرز الصفقات:*\n`; report += ` 🏆 *أفضل صفقة:* ربح بنسبة \`${formatNumber(bestTrade.pnlPercent)}%\`\n`; report += ` 💔 *أسوأ صفقة:* ${worstTrade.pnlPercent < 0 ? 'خسارة' : 'ربح'} بنسبة \`${formatNumber(worstTrade.pnlPercent)}%\`\n\n`; report += `*توصية استراتيجية خاصة:*\n`; if (avgRoi > 5 && winRate > 60) { report += `أداء *${asset}* يتفوق على المتوسط بشكل واضح. قد تفكر في زيادة حجم صفقاتك المستقبلية فيها.`; } else if (totalPnl < 0) { report += `أداء *${asset}* سلبي. قد ترغب في مراجعة استراتيجيتك لهذه العملة أو تقليل المخاطرة فيها.`; } else { report += `أداء *${asset}* يعتبر ضمن النطاق المقبول. استمر في المراقبة والتحليل.`; } await ctx.reply(report, { parse_mode: "Markdown" }); } catch(e) { console.error(`Error generating cumulative report for ${asset}:`, e); await ctx.reply("❌ حدث خطأ أثناء إنشاء التقرير."); } }
+
+// =================================================================
+// SECTION 4: WHAT-IF ANALYSIS FUNCTION
+// =================================================================
+async function analyzeClosedPositionsAsIfHeld(days) {
     try {
         const cutoffDate = new Date();
         cutoffDate.setDate(cutoffDate.getDate() - days);
-
+        
         const closedTrades = await getCollection("tradeHistory").find({
             closedAt: { $gte: cutoffDate }
         }).toArray();
-
+        
         if (closedTrades.length === 0) {
             return `📊 لم يتم إغلاق أي صفقات خلال آخر ${days} يوم.`;
         }
-
+        
         const prices = await okxAdapter.getMarketPrices();
         if (prices.error) {
             return "❌ فشل في جلب أسعار السوق الحالية.";
         }
-
-        let report = `🌀 *تحليل السيناريو الافتراضي – آخر ${days} يوم*\n\n`;
-
-        // متغيرات إجمالية
-        let totalActual = 0;
-        let totalHypo = 0;
-        let totalInvested = 0;
-
+        
+        let report = `🌀 *تحليل السيناريو الافتراضي - آخر ${days} يوم*\n\n`;
+        report += `📈 *ماذا لو لم تخرج من الصفقات المغلقة؟*\n\n`;
+        
         for (const trade of closedTrades) {
             const assetSymbol = trade.asset;
-
-            // 👇 محاولة التقاط الكمية من أكثر من حقل
-            const baseQty = trade.totalAmountBought 
-                         || trade.filledSize 
-                         || trade.executedQty 
-                         || trade.quantity 
-                         || trade.amount 
-                         || 0;
-
-            const quantity = (trade.exitQuantityPercent > 0)
-                ? baseQty * trade.exitQuantityPercent / 100
-                : baseQty;
-
+            const quantity = (trade.exitQuantityPercent > 0) ?
+                (trade.totalAmountBought ? trade.totalAmountBought * trade.exitQuantityPercent / 100 : 1) : 1;
             const avgBuyPrice = trade.avgBuyPrice;
             const exitPrice = trade.avgSellPrice;
             const currentPrice = prices[`${assetSymbol}-USDT`]?.price || 0;
 
-            if (!currentPrice || !quantity) {
-                report += `ℹ️ لا يمكن جلب السعر الحالي أو الكمية لـ ${assetSymbol}, تخطى.\n\n`;
+            if (!currentPrice) {
+                report += `ℹ️ لا يمكن جلب السعر الحالي لـ ${assetSymbol}, تخطى.\n\n`;
                 continue;
             }
 
-            const investedCapital = avgBuyPrice * quantity;
-            totalInvested += investedCapital;
-
-            // الحسابات
             const actualPnL = (exitPrice - avgBuyPrice) * quantity;
             const actualPnLPercent = avgBuyPrice > 0 ? ((exitPrice - avgBuyPrice) / avgBuyPrice) * 100 : 0;
 
@@ -846,47 +828,23 @@ async function analyzeClosedPositionsAsIfHeld(days = 30) {
 
             const diffPnL = hypotheticalPnL - actualPnL;
 
-            // تجميع إجمالي
-            totalActual += actualPnL;
-            totalHypo += hypotheticalPnL;
-
-            // إيموجي
-            const actualEmoji = actualPnL >= 0 ? "🟢" : "🔴";
-            const hypoEmoji = hypotheticalPnL >= 0 ? "🟢" : "🔴";
-            const diffEmoji = diffPnL >= 0 ? "🟢" : "🔴";
-
-            // 👇 تفاصيل العملة
-            report += `🔸 *${assetSymbol}:*\n`;
-            report += `  - الكمية المغلقة: ${formatNumber(quantity, 4)}\n`;
+            report += `🔸 ${assetSymbol}:\n`;
+            report += `  - الكمية المغلقة: ${formatNumber(quantity)}\n`;
             report += `  - سعر الدخول: $${formatNumber(avgBuyPrice, 4)}\n`;
             report += `  - سعر البيع (الإغلاق): $${formatNumber(exitPrice, 4)}\n`;
             report += `  - السعر الحالي: $${formatNumber(currentPrice, 4)}\n`;
-            report += `  - الربح/الخسارة الفعلية: ${actualEmoji} ${actualPnL >= 0 ? '+' : ''}${formatNumber(actualPnL, 2)} دولار (${actualPnLPercent.toFixed(2)}%)\n`;
-            report += `  - لو احتفظت: ${hypoEmoji} ${hypotheticalPnL >= 0 ? '+' : ''}${formatNumber(hypotheticalPnL, 2)} دولار (${hypotheticalPnLPercent.toFixed(2)}%)\n`;
-            report += `  - الفرق المتوقع: ${diffEmoji} ${diffPnL >= 0 ? '+' : ''}${formatNumber(diffPnL, 2)} دولار\n\n`;
+            report += `  - الربح/الخسارة الفعلية: ${actualPnL >= 0 ? '+' : ''}${formatNumber(actualPnL, 2)} دولار (${actualPnLPercent.toFixed(2)}%)\n`;
+            report += `  - لو احتفظت: ${hypotheticalPnL >= 0 ? '+' : ''}${formatNumber(hypotheticalPnL, 2)} دولار (${hypotheticalPnLPercent.toFixed(2)}%)\n`;
+            report += `  - الفرق المتوقع: ${diffPnL >= 0 ? '+' : ''}${formatNumber(diffPnL, 2)} دولار\n\n`;
         }
-
-        // 👇 الملخص الإجمالي
-        const totalDiff = totalHypo - totalActual;
-        const actualRoi = totalInvested > 0 ? (totalActual / totalInvested) * 100 : 0;
-        const hypoRoi = totalInvested > 0 ? (totalHypo / totalInvested) * 100 : 0;
-
-        const totalActualEmoji = totalActual >= 0 ? "🟢" : "🔴";
-        const totalHypoEmoji = totalHypo >= 0 ? "🟢" : "🔴";
-        const totalDiffEmoji = totalDiff >= 0 ? "🟢" : "🔴";
-
-        report += `━━━━━━━━━━━━━━━━━━━━\n`;
-        report += `📊 *الملخص الإجمالي (${days} يوم):*\n`;
-        report += `▪️ الفعلي: ${totalActualEmoji} $${formatNumber(totalActual)} (${formatNumber(actualRoi)}%)\n`;
-        report += `▪️ لو احتفظت: ${totalHypoEmoji} $${formatNumber(totalHypo)} (${formatNumber(hypoRoi)}%)\n`;
-        report += `▪️ الفرق الكلي: ${totalDiffEmoji} ${totalDiff >= 0 ? '+' : ''}$${formatNumber(totalDiff)}\n`;
-
         return report;
     } catch (e) {
         console.error("Error in analyzeClosedPositionsAsIfHeld:", e);
         return "❌ حدث خطأ أثناء تحليل السيناريو الافتراضي.";
     }
-} =================================================================
+}
+
+// =================================================================
 // SECTION 5: BOT SETUP, KEYBOARDS, AND HANDLERS
 // =================================================================
 const mainKeyboard = new Keyboard()
