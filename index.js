@@ -789,7 +789,6 @@ async function generateAndSendCumulativeReport(ctx, asset) { try { const trades 
 // =================================================================
 
 async function analyzeClosedPositionsAsIfHeld(days = 30) {
-    
     try {
         const cutoffDate = new Date();
         cutoffDate.setDate(cutoffDate.getDate() - days);
@@ -798,92 +797,60 @@ async function analyzeClosedPositionsAsIfHeld(days = 30) {
             closedAt: { $gte: cutoffDate }
         }).toArray();
 
-        if (closedTrades.length === 0) {
-            return `📊 لم يتم إغلاق أي صفقات خلال آخر ${days} يوم.`;
+        if (!closedTrades.length) {
+            return "ℹ️ لا يوجد صفقات مغلقة في آخر " + days + " يوم.";
         }
 
-        const prices = await okxAdapter.getMarketPrices();
-        if (prices.error) {
-            return "❌ فشل في جلب أسعار السوق الحالية.";
-        }
-
-        let report = `🌀 *تحليل السيناريو الافتراضي – آخر ${days} يوم*\n\n`;
-
-        // متغيرات إجمالية
-        let totalActual = 0;
-        let totalHypo = 0;
-        let totalInvested = 0;
+        let totalActual = 0;  // الربح/الخسارة الفعلي
+        let totalWhatIf = 0;  // لو كنت محتفظ
+        let skipped = [];
 
         for (const trade of closedTrades) {
-            const assetSymbol = trade.asset;
+            const asset = trade.asset;
 
-            // 👇 محاولة التقاط الكمية من أكثر من حقل
-            const baseQty = trade.totalAmountBought 
-                         || trade.filledSize 
-                         || trade.executedQty 
-                         || trade.quantity 
-                         || trade.amount 
-                         || 0;
+            // جلب السعر الحالي
+            const currentPrice = await fetchPrice(asset);
 
-            const quantity = (trade.exitQuantityPercent > 0)
-                ? baseQty * trade.exitQuantityPercent / 100
-                : baseQty;
-
-            const avgBuyPrice = trade.avgBuyPrice;
-            const exitPrice = trade.avgSellPrice;
-            const currentPrice = prices[`${assetSymbol}-USDT`]?.price || 0;
+            // حساب الكمية
+            let quantity = trade.quantity;
+            if (!quantity && trade.notional && trade.entryPrice) {
+                quantity = trade.notional / trade.entryPrice;
+            }
+            if (!quantity && trade.amount) {
+                quantity = trade.amount;
+            }
 
             if (!currentPrice || !quantity) {
-                report += `ℹ️ لا يمكن جلب السعر الحالي أو الكمية لـ ${assetSymbol}، تم التخطي.\n\n`;
+                skipped.push(asset);
                 continue;
             }
 
-            const investedCapital = avgBuyPrice * quantity;
-            totalInvested += investedCapital;
+            // الفعلي: الربح/الخسارة من الإغلاق
+            const actual = trade.pnl || ((trade.exitPrice - trade.entryPrice) * quantity);
 
-            const actualPnL = (exitPrice - avgBuyPrice) * quantity;
-            const actualPnLPercent =
-                avgBuyPrice > 0 ? ((exitPrice - avgBuyPrice) / avgBuyPrice) * 100 : 0;
+            // الافتراضي: لو كنت محتفظ بالسعر الحالي
+            const whatIf = (currentPrice - trade.entryPrice) * quantity;
 
-            const hypotheticalPnL = (currentPrice - avgBuyPrice) * quantity;
-            const hypotheticalPnLPercent =
-                avgBuyPrice > 0 ? ((currentPrice - avgBuyPrice) / avgBuyPrice) * 100 : 0;
-
-            const diffPnL = hypotheticalPnL - actualPnL;
-
-            totalActual += actualPnL;
-            totalHypo += hypotheticalPnL;
-
-            const actualEmoji = actualPnL >= 0 ? "🟢" : "🔴";
-            const hypoEmoji = hypotheticalPnL >= 0 ? "🟢" : "🔴";
-            const diffEmoji = diffPnL >= 0 ? "🟢" : "🔴";
-
-            report += `🔸 *${assetSymbol}:*\n`;
-            report += `  - الكمية المغلقة: ${formatNumber(quantity, 4)}\n`;
-            report += `  - سعر الدخول: $${formatNumber(avgBuyPrice, 4)}\n`;
-            report += `  - سعر البيع (الإغلاق): $${formatNumber(exitPrice, 4)}\n`;
-            report += `  - السعر الحالي: $${formatNumber(currentPrice, 4)}\n`;
-            report += `  - الربح/الخسارة الفعلية: ${actualEmoji} ${actualPnL >= 0 ? "+" : ""}${formatNumber(actualPnL, 2)} دولار (${actualPnLPercent.toFixed(2)}%)\n`;
-            report += `  - لو احتفظت: ${hypoEmoji} ${hypotheticalPnL >= 0 ? "+" : ""}${formatNumber(hypotheticalPnL, 2)} دولار (${hypotheticalPnLPercent.toFixed(2)}%)\n`;
-            report += `  - الفرق المتوقع: ${diffEmoji} ${diffPnL >= 0 ? "+" : ""}${formatNumber(diffPnL, 2)} دولار\n\n`;
+            totalActual += actual;
+            totalWhatIf += whatIf;
         }
 
-        // 👇 الملخص الإجمالي
-        const totalDiff = totalHypo - totalActual;
-        const actualRoi = totalInvested > 0 ? (totalActual / totalInvested) * 100 : 0;
-        const hypoRoi = totalInvested > 0 ? (totalHypo / totalInvested) * 100 : 0;
+        const diff = totalWhatIf - totalActual;
 
-        const totalActualEmoji = totalActual >= 0 ? "🟢" : "🔴";
-        const totalHypoEmoji = totalHypo >= 0 ? "🟢" : "🔴";
-        const totalDiffEmoji = totalDiff >= 0 ? "🟢" : "🔴";
+        let report = `🌀 تحليل السيناريو الافتراضي – آخر ${days} يوم\n\n`;
 
-        report += `━━━━━━━━━━━━━━━━━━━━\n`;
-        report += `📊 *الملخص الإجمالي (${days} يوم):*\n`;
-        report += `▪️ الفعلي: ${totalActualEmoji} $${formatNumber(totalActual)} (${formatNumber(actualRoi)}%)\n`;
-        report += `▪️ لو احتفظت: ${totalHypoEmoji} $${formatNumber(totalHypo)} (${formatNumber(hypoRoi)}%)\n`;
-        report += `▪️ الفرق الكلي: ${totalDiffEmoji} ${totalDiff >= 0 ? "+" : ""}$${formatNumber(totalDiff)}\n`;
+        skipped.forEach(asset => {
+            report += `ℹ️ لا يمكن جلب السعر الحالي أو الكمية لـ ${asset}، تم التخطي.\n\n`;
+        });
+
+        report += "━━━━━━━━━━━━━━━━━━━━\n";
+        report += `📊 الملخص الإجمالي (${days} يوم):\n`;
+        report += `▪️ الفعلي: ${totalActual >= 0 ? "🟢" : "🔴"} $${formatNumber(totalActual)} (${formatNumber((totalActual / Math.abs(totalActual || 1)) * 100)}%)\n`;
+        report += `▪️ لو احتفظت: ${totalWhatIf >= 0 ? "🟢" : "🔴"} $${formatNumber(totalWhatIf)} (${formatNumber((totalWhatIf / Math.abs(totalWhatIf || 1)) * 100)}%)\n`;
+        report += `▪️ الفرق الكلي: ${diff >= 0 ? "🟢" : "🔴"} ${diff >= 0 ? "+" : ""}$${formatNumber(diff)}\n`;
 
         return report;
+
     } catch (e) {
         console.error("Error in analyzeClosedPositionsAsIfHeld:", e);
         return "❌ حدث خطأ أثناء تحليل السيناريو الافتراضي.";
