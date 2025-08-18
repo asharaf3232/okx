@@ -885,7 +885,8 @@ async function analyzeClosedPositionsAsIfHeld(days = 30) {
         console.error("Error in analyzeClosedPositionsAsIfHeld:", e);
         return "❌ حدث خطأ أثناء تحليل السيناريو الافتراضي.";
     }
-} =================================================================
+}
+// =================================================================
 // SECTION 5: BOT SETUP, KEYBOARDS, AND HANDLERS
 // =================================================================
 const mainKeyboard = new Keyboard()
