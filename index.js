@@ -793,80 +793,97 @@ async function analyzeClosedPositionsAsIfHeld(days = 30) {
         const cutoffDate = new Date();
         cutoffDate.setDate(cutoffDate.getDate() - days);
 
-        const closedTrades = await getCollection("tradeHistory").find({
+        const trades = await getCollection("tradeHistory").find({
             closedAt: { $gte: cutoffDate }
         }).toArray();
 
-        if (!closedTrades.length) {
+        if (!trades || !trades.length) {
             return `ℹ️ لا يوجد صفقات مغلقة في آخر ${days} يوم.`;
         }
 
+        let report = `🌀 سيناريو لو لم أخرج – آخر ${days} يوم\n\n`;
         let totalActual = 0;
         let totalWhatIf = 0;
-        let report = `🌀 سيناريو لو لم أخرج – آخر ${days} يوم\n\n`;
 
-        for (const trade of closedTrades) {
-            const asset = trade.asset;
-            const entryPrice = trade.entryPrice;
-            const exitPrice = trade.exitPrice;
-            const currentPrice = await fetchPrice(asset);
+        for (const trade of trades) {
+            try {
+                const asset = trade.asset || (trade.instId ? String(trade.instId).split("-")[0] : null);
+                const entryPrice = Number(trade.entryPrice);
+                const exitPrice = trade.exitPrice != null ? Number(trade.exitPrice) : null;
+                const instId = trade.instId || (asset ? `${asset}-USDT` : null);
 
-            // حساب الكمية
-            let quantity = trade.quantity;
-            if (!quantity && trade.notional && entryPrice) {
-                quantity = trade.notional / entryPrice;
+                // السعر الحالي من OKX
+                let currentPrice = null;
+                if (instId) {
+                    const ticker = await getInstrumentDetails(instId);
+                    if (ticker) {
+                        currentPrice = Number(
+                            ticker.last ??
+                            ticker.lastPrice ??
+                            ticker.price ??
+                            ticker.close
+                        );
+                    }
+                }
+
+                // الكمية
+                let quantity = Number(trade.quantity);
+                if (!quantity && trade.notional && entryPrice) {
+                    quantity = Number(trade.notional) / entryPrice;
+                }
+                if (!quantity && trade.amount) {
+                    quantity = Number(trade.amount);
+                }
+
+                if (!asset || !entryPrice || !quantity || !currentPrice) {
+                    report += `ℹ️ تعذّر حساب ${instId || asset || "رمز غير معروف"}: بيانات ناقصة (quantity/currentPrice/entryPrice). تم التخطي.\n\n`;
+                    continue;
+                }
+
+                // الحسابات
+                const actual = (exitPrice != null && !Number.isNaN(exitPrice))
+                    ? (exitPrice - entryPrice) * quantity
+                    : (typeof trade.pnl === "number" ? Number(trade.pnl) : 0);
+
+                const whatIf = (currentPrice - entryPrice) * quantity;
+                const diff = whatIf - actual;
+
+                const actualROI = (exitPrice != null && entryPrice)
+                    ? ((exitPrice - entryPrice) / entryPrice) * 100
+                    : (entryPrice && quantity ? (actual / (entryPrice * quantity)) * 100 : 0);
+
+                const whatIfROI = entryPrice ? ((currentPrice - entryPrice) / entryPrice) * 100 : 0;
+                const diffROI = whatIfROI - actualROI;
+
+                // التفاصيل
+                report += `━━━━━━━━━━━━━━━━━━━━\n`;
+                report += `📌 ${instId || asset}\n`;
+                report += `▪️ الكمية: ${formatNumber(quantity)}\n`;
+                report += `▪️ سعر الشراء: $${formatNumber(entryPrice)}\n`;
+                if (exitPrice != null) report += `▪️ سعر البيع: $${formatNumber(exitPrice)}\n`;
+                report += `▪️ السعر الحالي: $${formatNumber(currentPrice)}\n\n`;
+                report += `💰 الفعلي (بعد البيع): ${actual >= 0 ? "🟢" : "🔴"} $${formatNumber(actual)} (${formatNumber(actualROI)}%)\n`;
+                report += `💡 لو احتفظت: ${whatIf >= 0 ? "🟢" : "🔴"} $${formatNumber(whatIf)} (${formatNumber(whatIfROI)}%)\n`;
+                report += `📊 الفرق: ${diff >= 0 ? "🟢" : "🔴"} ${diff >= 0 ? "+" : ""}$${formatNumber(diff)} (${formatNumber(diffROI)}%)\n\n`;
+
+                totalActual += actual;
+                totalWhatIf += whatIf;
+            } catch (inner) {
+                report += `ℹ️ خطأ أثناء معالجة صفقة: ${inner && inner.message ? inner.message : String(inner)}\n\n`;
             }
-            if (!quantity && trade.amount) {
-                quantity = trade.amount;
-            }
-
-            if (!currentPrice || !quantity) {
-                report += `ℹ️ لا يمكن جلب السعر الحالي أو الكمية لـ ${asset}، تم التخطي.\n\n`;
-                continue;
-            }
-
-            // الحسابات
-            const actual = (exitPrice - entryPrice) * quantity;   // الربح/الخسارة الفعلي
-            const whatIf = (currentPrice - entryPrice) * quantity; // لو احتفظت
-            const diff = whatIf - actual;
-
-            const actualROI = ((exitPrice - entryPrice) / entryPrice) * 100;
-            const whatIfROI = ((currentPrice - entryPrice) / entryPrice) * 100;
-            const diffROI = whatIfROI - actualROI;
-
-            totalActual += actual;
-            totalWhatIf += whatIf;
-
-            // تفاصيل العملة
-            report += `━━━━━━━━━━━━━━━━━━━━\n`;
-            report += `📌 ${asset}\n`;
-            report += `▪️ الكمية: ${formatNumber(quantity)}\n`;
-            report += `▪️ سعر الشراء: $${formatNumber(entryPrice)}\n`;
-            report += `▪️ سعر البيع: $${formatNumber(exitPrice)}\n`;
-            report += `▪️ السعر الحالي: $${formatNumber(currentPrice)}\n\n`;
-
-            report += `💰 الفعلي (بعد البيع): ${actual >= 0 ? "🟢" : "🔴"} $${formatNumber(actual)} (${formatNumber(actualROI)}%)\n`;
-            report += `💡 لو احتفظت: ${whatIf >= 0 ? "🟢" : "🔴"} $${formatNumber(whatIf)} (${formatNumber(whatIfROI)}%)\n`;
-            report += `📊 الفرق: ${diff >= 0 ? "🟢" : "🔴"} ${diff >= 0 ? "+" : ""}$${formatNumber(diff)} (${formatNumber(diffROI)}%)\n\n`;
         }
 
-        // الملخص الإجمالي
         const totalDiff = totalWhatIf - totalActual;
-        const totalActualROI = (totalActual / Math.abs(totalActual || 1)) * 100; // بس كإشارة تقريبية
-        const totalWhatIfROI = (totalWhatIf / Math.abs(totalWhatIf || 1)) * 100;
-        const totalDiffROI = totalWhatIfROI - totalActualROI;
-
         report += "━━━━━━━━━━━━━━━━━━━━\n";
         report += `📊 الملخص الإجمالي (${days} يوم):\n`;
-        report += `▪️ الفعلي: ${totalActual >= 0 ? "🟢" : "🔴"} $${formatNumber(totalActual)} (${formatNumber(totalActualROI)}%)\n`;
-        report += `▪️ لو احتفظت: ${totalWhatIf >= 0 ? "🟢" : "🔴"} $${formatNumber(totalWhatIf)} (${formatNumber(totalWhatIfROI)}%)\n`;
-        report += `▪️ الفرق الكلي: ${totalDiff >= 0 ? "🟢" : "🔴"} ${totalDiff >= 0 ? "+" : ""}$${formatNumber(totalDiff)} (${formatNumber(totalDiffROI)}%)\n`;
+        report += `▪️ الفعلي: ${totalActual >= 0 ? "🟢" : "🔴"} $${formatNumber(totalActual)}\n`;
+        report += `▪️ لو احتفظت: ${totalWhatIf >= 0 ? "🟢" : "🔴"} $${formatNumber(totalWhatIf)}\n`;
+        report += `▪️ الفرق الكلي: ${totalDiff >= 0 ? "🟢" : "🔴"} ${totalDiff >= 0 ? "+" : ""}$${formatNumber(totalDiff)}\n`;
 
         return report;
-
     } catch (e) {
         console.error("Error in analyzeClosedPositionsAsIfHeld:", e);
-        return "❌ حدث خطأ أثناء تحليل السيناريو الافتراضي.";
+        return `❌ حدث خطأ أثناء تحليل السيناريو الافتراضي: ${e.message}`;
     }
 }
 // =================================================================
