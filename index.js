@@ -510,7 +510,7 @@ async function updatePositionAndAnalyze(asset, amountChange, price, newTotalAmou
     
     if (newTotalAmount * price < 1) {
       // إغلاق المركز بالكامل
-      const closedQuantity = position.totalAmountBought;
+        const closedQuantity = soldAmount; // الكمية الفعلية المباعة
       const investedCapital = position.avgBuyPrice * closedQuantity;
       const realizedValue = position.realizedValue;
       const finalPnl = realizedValue - investedCapital;
@@ -1413,5 +1413,3 @@ function inferClosedQuantity(trade) {
   // القيمة الافتراضية في حالة عدم وجود بيانات كافية
   return 1;
 }
-
-
