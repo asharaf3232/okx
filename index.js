@@ -798,56 +798,69 @@ async function analyzeClosedPositionsAsIfHeld(days = 30) {
         }).toArray();
 
         if (!closedTrades.length) {
-            return "ℹ️ لا يوجد صفقات مغلقة في آخر " + days + " يوم.";
+            return `ℹ️ لا يوجد صفقات مغلقة في آخر ${days} يوم.`;
         }
 
-        let totalActual = 0;  // الربح/الخسارة الفعلي
-        let totalWhatIf = 0;  // لو كنت محتفظ
-        let skipped = [];
+        let totalActual = 0;
+        let totalWhatIf = 0;
+        let report = `🌀 سيناريو لو لم أخرج – آخر ${days} يوم\n\n`;
 
         for (const trade of closedTrades) {
             const asset = trade.asset;
-
-            // جلب السعر الحالي
+            const entryPrice = trade.entryPrice;
+            const exitPrice = trade.exitPrice;
             const currentPrice = await fetchPrice(asset);
 
             // حساب الكمية
             let quantity = trade.quantity;
-            if (!quantity && trade.notional && trade.entryPrice) {
-                quantity = trade.notional / trade.entryPrice;
+            if (!quantity && trade.notional && entryPrice) {
+                quantity = trade.notional / entryPrice;
             }
             if (!quantity && trade.amount) {
                 quantity = trade.amount;
             }
 
             if (!currentPrice || !quantity) {
-                skipped.push(asset);
+                report += `ℹ️ لا يمكن جلب السعر الحالي أو الكمية لـ ${asset}، تم التخطي.\n\n`;
                 continue;
             }
 
-            // الفعلي: الربح/الخسارة من الإغلاق
-            const actual = trade.pnl || ((trade.exitPrice - trade.entryPrice) * quantity);
+            // الحسابات
+            const actual = (exitPrice - entryPrice) * quantity;   // الربح/الخسارة الفعلي
+            const whatIf = (currentPrice - entryPrice) * quantity; // لو احتفظت
+            const diff = whatIf - actual;
 
-            // الافتراضي: لو كنت محتفظ بالسعر الحالي
-            const whatIf = (currentPrice - trade.entryPrice) * quantity;
+            const actualROI = ((exitPrice - entryPrice) / entryPrice) * 100;
+            const whatIfROI = ((currentPrice - entryPrice) / entryPrice) * 100;
+            const diffROI = whatIfROI - actualROI;
 
             totalActual += actual;
             totalWhatIf += whatIf;
+
+            // تفاصيل العملة
+            report += `━━━━━━━━━━━━━━━━━━━━\n`;
+            report += `📌 ${asset}\n`;
+            report += `▪️ الكمية: ${formatNumber(quantity)}\n`;
+            report += `▪️ سعر الشراء: $${formatNumber(entryPrice)}\n`;
+            report += `▪️ سعر البيع: $${formatNumber(exitPrice)}\n`;
+            report += `▪️ السعر الحالي: $${formatNumber(currentPrice)}\n\n`;
+
+            report += `💰 الفعلي (بعد البيع): ${actual >= 0 ? "🟢" : "🔴"} $${formatNumber(actual)} (${formatNumber(actualROI)}%)\n`;
+            report += `💡 لو احتفظت: ${whatIf >= 0 ? "🟢" : "🔴"} $${formatNumber(whatIf)} (${formatNumber(whatIfROI)}%)\n`;
+            report += `📊 الفرق: ${diff >= 0 ? "🟢" : "🔴"} ${diff >= 0 ? "+" : ""}$${formatNumber(diff)} (${formatNumber(diffROI)}%)\n\n`;
         }
 
-        const diff = totalWhatIf - totalActual;
-
-        let report = `🌀 تحليل السيناريو الافتراضي – آخر ${days} يوم\n\n`;
-
-        skipped.forEach(asset => {
-            report += `ℹ️ لا يمكن جلب السعر الحالي أو الكمية لـ ${asset}، تم التخطي.\n\n`;
-        });
+        // الملخص الإجمالي
+        const totalDiff = totalWhatIf - totalActual;
+        const totalActualROI = (totalActual / Math.abs(totalActual || 1)) * 100; // بس كإشارة تقريبية
+        const totalWhatIfROI = (totalWhatIf / Math.abs(totalWhatIf || 1)) * 100;
+        const totalDiffROI = totalWhatIfROI - totalActualROI;
 
         report += "━━━━━━━━━━━━━━━━━━━━\n";
         report += `📊 الملخص الإجمالي (${days} يوم):\n`;
-        report += `▪️ الفعلي: ${totalActual >= 0 ? "🟢" : "🔴"} $${formatNumber(totalActual)} (${formatNumber((totalActual / Math.abs(totalActual || 1)) * 100)}%)\n`;
-        report += `▪️ لو احتفظت: ${totalWhatIf >= 0 ? "🟢" : "🔴"} $${formatNumber(totalWhatIf)} (${formatNumber((totalWhatIf / Math.abs(totalWhatIf || 1)) * 100)}%)\n`;
-        report += `▪️ الفرق الكلي: ${diff >= 0 ? "🟢" : "🔴"} ${diff >= 0 ? "+" : ""}$${formatNumber(diff)}\n`;
+        report += `▪️ الفعلي: ${totalActual >= 0 ? "🟢" : "🔴"} $${formatNumber(totalActual)} (${formatNumber(totalActualROI)}%)\n`;
+        report += `▪️ لو احتفظت: ${totalWhatIf >= 0 ? "🟢" : "🔴"} $${formatNumber(totalWhatIf)} (${formatNumber(totalWhatIfROI)}%)\n`;
+        report += `▪️ الفرق الكلي: ${totalDiff >= 0 ? "🟢" : "🔴"} ${totalDiff >= 0 ? "+" : ""}$${formatNumber(totalDiff)} (${formatNumber(totalDiffROI)}%)\n`;
 
         return report;
 
