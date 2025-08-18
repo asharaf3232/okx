@@ -474,7 +474,95 @@ async function formatPerformanceReport(period, periodLabel, history, btcHistory)
 // =================================================================
 // SECTION 4: BACKGROUND JOBS & DYNAMIC MANAGEMENT
 // =================================================================
-async function updatePositionAndAnalyze(asset, amountChange, price, newTotalAmount, oldTotalValue) { if (!asset || price === undefined || price === null || isNaN(price)) return { analysisResult: null }; const positions = await loadPositions(); let position = positions[asset]; let analysisResult = { type: 'none', data: {} }; if (amountChange > 0) { const tradeValue = amountChange * price; const entryCapitalPercent = oldTotalValue > 0 ? (tradeValue / oldTotalValue) * 100 : 0; if (!position) { positions[asset] = { totalAmountBought: amountChange, totalCost: tradeValue, avgBuyPrice: price, openDate: new Date().toISOString(), totalAmountSold: 0, realizedValue: 0, highestPrice: price, lowestPrice: price, entryCapitalPercent: entryCapitalPercent, }; } else { position.totalAmountBought += amountChange; position.totalCost += tradeValue; position.avgBuyPrice = position.totalCost / position.totalAmountBought; } analysisResult.type = 'buy'; } else if (amountChange < 0 && position) { const soldAmount = Math.abs(amountChange); position.realizedValue = (position.realizedValue || 0) + (soldAmount * price); position.totalAmountSold = (position.totalAmountSold || 0) + soldAmount; if (newTotalAmount * price < 1) { const totalCost = parseFloat(position.totalCost); const realizedValue = parseFloat(position.realizedValue); const finalPnl = realizedValue - totalCost; const finalPnlPercent = totalCost > 0 ? (finalPnl / totalCost) * 100 : 0; const closeDate = new Date(); const openDate = new Date(position.openDate); const durationDays = (closeDate.getTime() - openDate.getTime()) / (1000 * 60 * 60 * 24); const avgSellPrice = position.totalAmountSold > 0 ? position.realizedValue / position.totalAmountSold : 0; const closeReportData = { asset, pnl: finalPnl, pnlPercent: finalPnlPercent, durationDays, avgBuyPrice: position.avgBuyPrice, avgSellPrice, highestPrice: position.highestPrice, lowestPrice: position.lowestPrice, entryCapitalPercent: position.entryCapitalPercent, exitQuantityPercent: 100 }; await saveClosedTrade(closeReportData); analysisResult = { type: 'close', data: closeReportData }; delete positions[asset]; } else { analysisResult.type = 'sell'; } } await savePositions(positions); analysisResult.data.position = positions[asset] || position; return { analysisResult }; }
+async function updatePositionAndAnalyze(asset, amountChange, price, newTotalAmount, oldTotalValue) {
+    if (!asset || price === undefined || price === null || isNaN(price)) return { analysisResult: null };
+
+    const positions = await loadPositions();
+    let position = positions[asset];
+    let analysisResult = { type: 'none', data: {} };
+
+    if (amountChange > 0) {
+        // شراء أو تعزيز مركز
+        const tradeValue = amountChange * price;
+        const entryCapitalPercent = oldTotalValue > 0 ? (tradeValue / oldTotalValue) * 100 : 0;
+
+        if (!position) {
+            positions[asset] = {
+                totalAmountBought: amountChange,
+                totalCost: tradeValue,
+                avgBuyPrice: price,
+                openDate: new Date().toISOString(),
+                totalAmountSold: 0,
+                realizedValue: 0,
+                highestPrice: price,
+                lowestPrice: price,
+                entryCapitalPercent: entryCapitalPercent,
+            };
+            position = positions[asset];
+        } else {
+            position.totalAmountBought += amountChange;
+            position.totalCost += tradeValue;
+            position.avgBuyPrice = position.totalCost / position.totalAmountBought;
+            if (price > position.highestPrice) position.highestPrice = price;
+            if (price < position.lowestPrice) position.lowestPrice = price;
+        }
+        analysisResult.type = 'buy';
+
+    } else if (amountChange < 0 && position) {
+        // بيع أو تخفيف مركز
+        const soldAmount = Math.abs(amountChange);
+        position.realizedValue = (position.realizedValue || 0) + (soldAmount * price);
+        position.totalAmountSold = (position.totalAmountSold || 0) + soldAmount;
+
+        if (newTotalAmount * price < 1) {
+            // إغلاق المركز بالكامل
+            const closedQuantity = position.totalAmountBought;
+            const investedCapital = position.avgBuyPrice * closedQuantity;
+            const realizedValue = position.realizedValue;
+            const finalPnl = realizedValue - investedCapital;
+            const finalPnlPercent = investedCapital > 0 ? (finalPnl / investedCapital) * 100 : 0;
+
+            const closeDate = new Date();
+            const openDate = new Date(position.openDate);
+            const durationDays = (closeDate.getTime() - openDate.getTime()) / (1000 * 60 * 60 * 24);
+            const avgSellPrice = position.totalAmountSold > 0 ? position.realizedValue / position.totalAmountSold : 0;
+            const closeReportData = {
+                asset,
+                pnl: finalPnl,
+                pnlPercent: finalPnlPercent,
+                durationDays,
+                avgBuyPrice: position.avgBuyPrice,
+                avgSellPrice,
+                highestPrice: position.highestPrice,
+                lowestPrice: position.lowestPrice,
+                entryCapitalPercent: position.entryCapitalPercent,
+                exitQuantityPercent: 100
+            };
+
+            console.log(
+                `[Debug Close] Asset: ${asset}`,
+                "Closed Quantity:", closedQuantity,
+                "Avg Buy Price:", position.avgBuyPrice,
+                "Invested Capital:", investedCapital,
+                "Realized Value:", realizedValue,
+                "PnL:", finalPnl,
+                "ROI (%):", finalPnlPercent,
+                "Avg Sell Price:", avgSellPrice
+            );
+
+            await saveClosedTrade(closeReportData);
+            analysisResult = { type: 'close', data: closeReportData };
+            delete positions[asset];
+        } else {
+            analysisResult.type = 'sell';
+        }
+    }
+
+    await savePositions(positions);
+    analysisResult.data.position = positions[asset] || position;
+    return { analysisResult };
+}
+
 async function monitorBalanceChanges() {
     try {
         await sendDebugMessage("Starting comprehensive portfolio and price monitoring...");
