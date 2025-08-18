@@ -784,128 +784,142 @@ async function runDailyReportJob() { try { await sendDebugMessage("Running daily
 async function generateAndSendCumulativeReport(ctx, asset) { try { const trades = await getCollection("tradeHistory").find({ asset: asset }).toArray(); if (trades.length === 0) { await ctx.reply(`ℹ️ لا يوجد سجل صفقات مغلقة لعملة *${asset}*.`, { parse_mode: "Markdown" }); return; } const totalPnl = trades.reduce((sum, trade) => sum + (trade.pnl || 0), 0); const totalRoi = trades.reduce((sum, trade) => sum + (trade.pnlPercent || 0), 0); const avgRoi = totalRoi / trades.length; const winningTrades = trades.filter(t => (t.pnl || 0) > 0).length; const winRate = (winningTrades / trades.length) * 100; const bestTrade = trades.reduce((max, trade) => (trade.pnlPercent || 0) > (max.pnlPercent || 0) ? trade : max, trades[0]); const worstTrade = trades.reduce((min, trade) => (trade.pnlPercent || 0) < (min.pnlPercent || 0) ? trade : min, trades[0]); const impactSign = totalPnl >= 0 ? '+' : ''; const impactEmoji = totalPnl >= 0 ? '🟢' : '🔴'; const winRateEmoji = winRate >= 50 ? '✅' : '⚠️'; let report = `*تحليل الأثر التراكمي | ${asset}* 🔬\n\n`; report += `*الخلاصة الاستراتيجية:*\n`; report += `تداولاتك في *${asset}* أضافت ما قيمته \`${impactSign}$${formatNumber(totalPnl)}\` ${impactEmoji} إلى محفظتك بشكل تراكمي.\n\n`; report += `*ملخص الأداء التاريخي:*\n`; report += ` ▪️ *إجمالي الصفقات:* \`${trades.length}\`\n`; report += ` ▪️ *معدل النجاح (Win Rate):* \`${formatNumber(winRate)}%\` ${winRateEmoji}\n`; report += ` ▪️ *متوسط العائد (ROI):* \`${formatNumber(avgRoi)}%\`\n\n`; report += `*أبرز الصفقات:*\n`; report += ` 🏆 *أفضل صفقة:* ربح بنسبة \`${formatNumber(bestTrade.pnlPercent)}%\`\n`; report += ` 💔 *أسوأ صفقة:* ${worstTrade.pnlPercent < 0 ? 'خسارة' : 'ربح'} بنسبة \`${formatNumber(worstTrade.pnlPercent)}%\`\n\n`; report += `*توصية استراتيجية خاصة:*\n`; if (avgRoi > 5 && winRate > 60) { report += `أداء *${asset}* يتفوق على المتوسط بشكل واضح. قد تفكر في زيادة حجم صفقاتك المستقبلية فيها.`; } else if (totalPnl < 0) { report += `أداء *${asset}* سلبي. قد ترغب في مراجعة استراتيجيتك لهذه العملة أو تقليل المخاطرة فيها.`; } else { report += `أداء *${asset}* يعتبر ضمن النطاق المقبول. استمر في المراقبة والتحليل.`; } await ctx.reply(report, { parse_mode: "Markdown" }); } catch(e) { console.error(`Error generating cumulative report for ${asset}:`, e); await ctx.reply("❌ حدث خطأ أثناء إنشاء التقرير.");
 } }
 async function analyzeClosedPositionsAsIfHeld(days) {
-    try {
-        const cutoffDate = new Date();
-        cutoffDate.setDate(cutoffDate.getDate() - days);
+  try {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
 
-        const closedTrades = await getCollection("tradeHistory").find({
-            closedAt: { $gte: cutoffDate }
-        }).toArray();
+    const closedTrades = await getCollection("tradeHistory").find({
+      closedAt: { $gte: cutoffDate }
+    }).toArray();
 
-        if (closedTrades.length === 0) {
-            return `📊 لم يتم إغلاق أي صفقات خلال آخر ${days} يوم.`;
-        }
-
-        const prices = await okxAdapter.getMarketPrices();
-        if (prices.error) {
-            return "❌ فشل في جلب أسعار السوق الحالية.";
-        }
-
-        let report = `🌀 *تحليل السيناريو الافتراضي - آخر ${days} يوم*\n\n`;
-        report += `📈 *ماذا لو لم تخرج من الصفقات المغلقة؟*\n\n`;
-
-        // متغيرات للملخص الإجمالي
-        let totalActualPnL = 0;
-        let totalHypotheticalPnL = 0;
-        let totalInvestment = 0;
-
-        for (const trade of closedTrades) {
-            const assetSymbol = trade.asset;
-            const avgBuyPrice = trade.avgBuyPrice || 0;
-            const avgSellPrice = trade.avgSellPrice || 0;
-            const currentPrice = prices[`${assetSymbol}-USDT`]?.price || 0;
-
-            if (!currentPrice || avgBuyPrice <= 0) {
-                report += `ℹ️ لا يمكن جلب السعر الحالي لـ ${assetSymbol}, تخطى.\n\n`;
-                continue;
-            }
-
-            // حساب الكمية الصحيحة
-            let closedQuantity;
-            if (trade.totalAmountBought && trade.exitQuantityPercent) {
-                // إذا كانت البيانات متوفرة، احسب بناءً على النسبة المئوية
-                closedQuantity = trade.totalAmountBought * (trade.exitQuantityPercent / 100);
-            } else if (trade.totalAmountSold) {
-                // استخدم إجمالي الكمية المباعة
-                closedQuantity = trade.totalAmountSold;
-            } else if (trade.realizedValue && avgSellPrice > 0) {
-                // احسب من القيمة المحققة وسعر البيع
-                closedQuantity = trade.realizedValue / avgSellPrice;
-            } else if (trade.totalCost && avgBuyPrice > 0) {
-                // احسب من التكلفة الإجمالية وسعر الشراء
-                closedQuantity = trade.totalCost / avgBuyPrice;
-            } else {
-                // قيمة افتراضية في حالة عدم توفر البيانات
-                closedQuantity = 1;
-                console.warn(`Missing quantity data for ${assetSymbol}, using default value of 1`);
-            }
-
-            // حساب الاستثمار الفعلي
-            const investment = avgBuyPrice * closedQuantity;
-            
-            // حساب الأرباح/الخسائر
-            const actualPnL = (avgSellPrice - avgBuyPrice) * closedQuantity;
-            const actualPnLPercent = investment > 0 ? (actualPnL / investment) * 100 : 0;
-            
-            const hypotheticalPnL = (currentPrice - avgBuyPrice) * closedQuantity;
-            const hypotheticalPnLPercent = investment > 0 ? (hypotheticalPnL / investment) * 100 : 0;
-            
-            const diffPnL = hypotheticalPnL - actualPnL;
-
-            // إضافة للملخص الإجمالي
-            totalActualPnL += actualPnL;
-            totalHypotheticalPnL += hypotheticalPnL;
-            totalInvestment += investment;
-
-            // تنسيق التقرير
-            const actualEmoji = actualPnL >= 0 ? '🟢' : '🔴';
-            const hypotheticalEmoji = hypotheticalPnL >= 0 ? '🟢' : '🔴';
-            const diffEmoji = diffPnL >= 0 ? '🟢' : '🔴';
-
-            report += `🔸 ${assetSymbol}:\n`;
-            report += ` - الكمية المغلقة: ${formatNumber(closedQuantity, 6)}\n`;
-            report += ` - سعر الدخول: $${formatNumber(avgBuyPrice, 4)}\n`;
-            report += ` - سعر البيع (الإغلاق): $${formatNumber(avgSellPrice, 4)}\n`;
-            report += ` - السعر الحالي: $${formatNumber(currentPrice, 4)}\n`;
-            report += ` - الربح/الخسارة الفعلية: ${actualEmoji} ${actualPnL >= 0 ? '+' : ''}${formatNumber(actualPnL, 2)} دولار (${actualPnLPercent >= 0 ? '+' : ''}${formatNumber(actualPnLPercent, 2)}%)\n`;
-            report += ` - لو احتفظت: ${hypotheticalEmoji} ${hypotheticalPnL >= 0 ? '+' : ''}${formatNumber(hypotheticalPnL, 2)} دولار (${hypotheticalPnLPercent >= 0 ? '+' : ''}${formatNumber(hypotheticalPnLPercent, 2)}%)\n`;
-            report += ` - الفرق المتوقع: ${diffEmoji} ${diffPnL >= 0 ? '+' : ''}${formatNumber(diffPnL, 2)} دولار\n\n`;
-        }
-
-        // إضافة الملخص الإجمالي
-        if (totalInvestment > 0) {
-            const totalActualPercent = (totalActualPnL / totalInvestment) * 100;
-            const totalHypotheticalPercent = (totalHypotheticalPnL / totalInvestment) * 100;
-            const totalDiffPnL = totalHypotheticalPnL - totalActualPnL;
-
-            const actualEmojiTotal = totalActualPnL >= 0 ? '🟢' : '🔴';
-            const hypotheticalEmojiTotal = totalHypotheticalPnL >= 0 ? '🟢' : '🔴';
-            const diffEmojiTotal = totalDiffPnL >= 0 ? '🟢' : '🔴';
-
-            report += `━━━━━━━━━━━━━━━━━━━━\n`;
-            report += `📊 *الملخص الإجمالي (${days} يوم):*\n`;
-            report += `▪️ إجمالي الاستثمار: $${formatNumber(totalInvestment, 2)}\n`;
-            report += `▪️ الفعلي: ${actualEmojiTotal} $${totalActualPnL >= 0 ? '+' : ''}${formatNumber(totalActualPnL, 2)} (${totalActualPercent >= 0 ? '+' : ''}${formatNumber(totalActualPercent, 2)}%)\n`;
-            report += `▪️ لو احتفظت: ${hypotheticalEmojiTotal} $${totalHypotheticalPnL >= 0 ? '+' : ''}${formatNumber(totalHypotheticalPnL, 2)} (${totalHypotheticalPercent >= 0 ? '+' : ''}${formatNumber(totalHypotheticalPercent, 2)}%)\n`;
-            report += `▪️ الفرق الكلي: ${diffEmojiTotal} $${totalDiffPnL >= 0 ? '+' : ''}${formatNumber(totalDiffPnL, 2)}\n\n`;
-
-            // تحليل ذكي
-            if (totalDiffPnL > 0) {
-                report += `✅ *التحليل:* قراراتك في الخروج كانت حكيمة! وفرت عليك خسائر إضافية.`;
-            } else if (totalDiffPnL < 0) {
-                report += `⚠️ *التحليل:* الخروج المبكر كلفك أرباحاً محتملة، لكن إدارة المخاطر أهم من الأرباح الافتراضية.`;
-            } else {
-                report += `⚖️ *التحليل:* توقيتك في الخروج كان مناسباً تماماً.`;
-            }
-        }
-
-        return report;
-
-    } catch (e) {
-        console.error("Error in analyzeClosedPositionsAsIfHeld:", e);
-        return "❌ حدث خطأ أثناء تحليل السيناريو الافتراضي.";
+    if (closedTrades.length === 0) {
+      return `📊 لم يتم إغلاق أي صفقات خلال آخر ${days} يوم.`;
     }
+
+    const prices = await okxAdapter.getMarketPrices();
+    if (prices.error) {
+      return "❌ فشل في جلب أسعار السوق الحالية.";
+    }
+
+    // دالة مساعدة لحساب الكمية المغلقة الصحيحة
+    function inferClosedQuantity(trade) {
+      // إذا كان لديك الكمية بشكل صريح عند الإغلاق
+      if (typeof trade.exitQuantity !== "undefined" && trade.exitQuantity > 0)
+        return trade.exitQuantity;
+      
+      // أفضل سيناريو: تم إغلاق مركز بالكامل
+      if (trade.exitQuantityPercent === 100 && trade.totalAmountBought)
+        return trade.totalAmountBought;
+      
+      // إن كانت متوفرة النسبة واقل من مئة
+      if (typeof trade.exitQuantityPercent === "number" && trade.exitQuantityPercent > 0 && trade.totalAmountBought)
+        return trade.totalAmountBought * (trade.exitQuantityPercent / 100);
+      
+      // fallback: استخدم الكمية المباعة إن وجدت
+      if (typeof trade.totalAmountSold !== "undefined" && trade.totalAmountSold > 0)
+        return trade.totalAmountSold;
+      
+      // fallback: القيمة المحققة/سعر البيع
+      if (trade.realizedValue > 0 && trade.avgSellPrice > 0)
+        return trade.realizedValue / trade.avgSellPrice;
+      
+      // fallback: التكلفة الإجمالية/متوسط الشراء
+      if (trade.totalCost > 0 && trade.avgBuyPrice > 0)
+        return trade.totalCost / trade.avgBuyPrice;
+      
+      // fallback أخير افتراضي
+      return 1;
+    }
+
+    let report = `🌀 *تحليل السيناريو الافتراضي - آخر ${days} يوم*\n\n`;
+    report += `📈 *ماذا لو لم تخرج من الصفقات المغلقة؟*\n\n`;
+
+    // متغيرات للملخص الإجمالي
+    let totalActualPnL = 0;
+    let totalHypotheticalPnL = 0;
+    let totalInvestment = 0;
+
+    for (const trade of closedTrades) {
+      const assetSymbol = trade.asset;
+      const avgBuyPrice = trade.avgBuyPrice || 0;
+      const avgSellPrice = trade.avgSellPrice || 0;
+      const currentPrice = prices[`${assetSymbol}-USDT`]?.price || 0;
+
+      if (!currentPrice || avgBuyPrice <= 0) {
+        report += `ℹ️ لا يمكن جلب السعر الحالي لـ ${assetSymbol}, تخطى.\n\n`;
+        continue;
+      }
+
+      // استخدم الدالة الجديدة للكمية
+      const quantity = inferClosedQuantity(trade);
+
+      // حساب الاستثمار الفعلي
+      const investment = avgBuyPrice * quantity;
+      
+      // حساب الأرباح/الخسائر
+      const actualPnL = (avgSellPrice - avgBuyPrice) * quantity;
+      const actualPnLPercent = investment > 0 ? (actualPnL / investment) * 100 : 0;
+      
+      const hypotheticalPnL = (currentPrice - avgBuyPrice) * quantity;
+      const hypotheticalPnLPercent = investment > 0 ? (hypotheticalPnL / investment) * 100 : 0;
+      
+      const diffPnL = hypotheticalPnL - actualPnL;
+
+      // إضافة للملخص الإجمالي
+      totalActualPnL += actualPnL;
+      totalHypotheticalPnL += hypotheticalPnL;
+      totalInvestment += investment;
+
+      // تنسيق التقرير
+      const actualEmoji = actualPnL >= 0 ? '🟢' : '🔴';
+      const hypotheticalEmoji = hypotheticalPnL >= 0 ? '🟢' : '🔴';
+      const diffEmoji = diffPnL >= 0 ? '🟢' : '🔴';
+
+      report += `🔸 ${assetSymbol}:\n`;
+      report += ` - الكمية المغلقة: ${formatNumber(quantity, 6)}\n`;
+      report += ` - سعر الدخول: $${formatNumber(avgBuyPrice, 4)}\n`;
+      report += ` - سعر البيع (الإغلاق): $${formatNumber(avgSellPrice, 4)}\n`;
+      report += ` - السعر الحالي: $${formatNumber(currentPrice, 4)}\n`;
+      report += ` - الربح/الخسارة الفعلية: ${actualEmoji} ${actualPnL >= 0 ? '+' : ''}${formatNumber(actualPnL, 2)} دولار (${actualPnLPercent >= 0 ? '+' : ''}${formatNumber(actualPnLPercent, 2)}%)\n`;
+      report += ` - لو احتفظت: ${hypotheticalEmoji} ${hypotheticalPnL >= 0 ? '+' : ''}${formatNumber(hypotheticalPnL, 2)} دولار (${hypotheticalPnLPercent >= 0 ? '+' : ''}${formatNumber(hypotheticalPnLPercent, 2)}%)\n`;
+      report += ` - الفرق المتوقع: ${diffEmoji} ${diffPnL >= 0 ? '+' : ''}${formatNumber(diffPnL, 2)} دولار\n\n`;
+    }
+
+    // إضافة الملخص الإجمالي
+    if (totalInvestment > 0) {
+      const totalActualPercent = (totalActualPnL / totalInvestment) * 100;
+      const totalHypotheticalPercent = (totalHypotheticalPnL / totalInvestment) * 100;
+      const totalDiffPnL = totalHypotheticalPnL - totalActualPnL;
+
+      const actualEmojiTotal = totalActualPnL >= 0 ? '🟢' : '🔴';
+      const hypotheticalEmojiTotal = totalHypotheticalPnL >= 0 ? '🟢' : '🔴';
+      const diffEmojiTotal = totalDiffPnL >= 0 ? '🟢' : '🔴';
+
+      report += `━━━━━━━━━━━━━━━━━━━━\n`;
+      report += `📊 *الملخص الإجمالي (${days} يوم):*\n`;
+      report += `▪️ إجمالي الاستثمار: $${formatNumber(totalInvestment, 2)}\n`;
+      report += `▪️ الفعلي: ${actualEmojiTotal} $${totalActualPnL >= 0 ? '+' : ''}${formatNumber(totalActualPnL, 2)} (${totalActualPercent >= 0 ? '+' : ''}${formatNumber(totalActualPercent, 2)}%)\n`;
+      report += `▪️ لو احتفظت: ${hypotheticalEmojiTotal} $${totalHypotheticalPnL >= 0 ? '+' : ''}${formatNumber(totalHypotheticalPnL, 2)} (${totalHypotheticalPercent >= 0 ? '+' : ''}${formatNumber(totalHypotheticalPercent, 2)}%)\n`;
+      report += `▪️ الفرق الكلي: ${diffEmojiTotal} $${totalDiffPnL >= 0 ? '+' : ''}${formatNumber(totalDiffPnL, 2)}\n\n`;
+
+      // تحليل ذكي
+      if (totalDiffPnL > 0) {
+        report += `✅ *التحليل:* قراراتك في الخروج كانت حكيمة! وفرت عليك خسائر إضافية.`;
+      } else if (totalDiffPnL < 0) {
+        report += `⚠️ *التحليل:* الخروج المبكر كلفك أرباحاً محتملة، لكن إدارة المخاطر أهم من الأرباح الافتراضية.`;
+      } else {
+        report += `⚖️ *التحليل:* توقيتك في الخروج كان مناسبًا تماماً.`;
+      }
+    }
+
+    return report;
+
+  } catch (e) {
+    console.error("Error in analyzeClosedPositionsAsIfHeld:", e);
+    return "❌ حدث خطأ أثناء تحليل السيناريو الافتراضي.";
+  }
 }
+
 
 // =================================================================
 // SECTION 5: BOT SETUP, KEYBOARDS, AND HANDLERS
