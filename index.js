@@ -772,6 +772,11 @@ function inferClosedQuantity(trade) {
     return trade.exitQuantity;
   }
   
+  // الأولوية الثانية: الكمية الإجمالية المشتراة عند فتح المركز
+  if (typeof trade.totalAmountBought !== "undefined" && trade.totalAmountBought > 0) {
+    return trade.totalAmountBought;
+  }
+
   // خيارات احتياطية للصفقات القديمة
   if (trade.exitQuantityPercent === 100 && trade.totalAmountBought) {
     return trade.totalAmountBought;
