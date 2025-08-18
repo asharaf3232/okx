@@ -776,8 +776,8 @@ async function formatDailyCopyReport() {
     const totalPnlEmoji = totalPnl >= 0 ? '📈' : '📉';
     report += `إجمالي الربح الحالي خدمة النسخ: ${totalPnl >= 0 ? '+' : ''}${formatNumber(totalPnl, 2)}% ${totalPnlEmoji}\n\n`;
     report += `✍️ يمكنك الدخول في اي وقت تراه مناسب، الخدمة مفتوحة للجميع\n\n`;
-    report += `📢 قناة التحديثات الرسمية:\n@RahhalVIP\n\n`;
-    report += `🌐 رابط النسخ المباشر:\n🏦 https://www.binance.info/copy-trading/lead-details/456346669905472870`;
+    report += `📢 قناة التحديثات الرسمية:\n@abusalamachart\n\n`;
+    report += `🌐 رابط النسخ المباشر:\n🏦 https://t.me/abusalamachart`;
     return report;
 }
 async function runDailyReportJob() { try { await sendDebugMessage("Running daily copy-trading report job..."); const report = await formatDailyCopyReport(); if (report.startsWith("📊 لم يتم إغلاق أي صفقات")) { await bot.api.sendMessage(AUTHORIZED_USER_ID, report); } else { await bot.api.sendMessage(process.env.TARGET_CHANNEL_ID, report); await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ تم إرسال تقرير النسخ اليومي إلى القناة بنجاح."); } } catch(e) { console.error("Error in runDailyReportJob:", e); await bot.api.sendMessage(AUTHORIZED_USER_ID, `❌ حدث خطأ أثناء إنشاء تقرير النسخ اليومي: ${e.message}`); } }
