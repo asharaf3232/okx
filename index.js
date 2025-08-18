@@ -805,23 +805,32 @@ async function analyzeClosedPositionsAsIfHeld(days = 30) {
 
         let report = `🌀 *تحليل السيناريو الافتراضي – آخر ${days} يوم*\n\n`;
 
-        // تجميع للإجمالي
+        // متغيرات إجمالية
         let totalActual = 0;
         let totalHypo = 0;
         let totalInvested = 0;
 
         for (const trade of closedTrades) {
             const assetSymbol = trade.asset;
+
+            // 👇 محاولة التقاط الكمية من أكثر من حقل
+            const baseQty = trade.totalAmountBought 
+                         || trade.filledSize 
+                         || trade.executedQty 
+                         || trade.quantity 
+                         || trade.amount 
+                         || 0;
+
             const quantity = (trade.exitQuantityPercent > 0)
-                ? (trade.totalAmountBought ? trade.totalAmountBought * trade.exitQuantityPercent / 100 : 1)
-                : 1;
+                ? baseQty * trade.exitQuantityPercent / 100
+                : baseQty;
 
             const avgBuyPrice = trade.avgBuyPrice;
             const exitPrice = trade.avgSellPrice;
             const currentPrice = prices[`${assetSymbol}-USDT`]?.price || 0;
 
-            if (!currentPrice) {
-                report += `ℹ️ لا يمكن جلب السعر الحالي لـ ${assetSymbol}, تخطى.\n\n`;
+            if (!currentPrice || !quantity) {
+                report += `ℹ️ لا يمكن جلب السعر الحالي أو الكمية لـ ${assetSymbol}, تخطى.\n\n`;
                 continue;
             }
 
@@ -837,18 +846,18 @@ async function analyzeClosedPositionsAsIfHeld(days = 30) {
 
             const diffPnL = hypotheticalPnL - actualPnL;
 
-            // تجميع
+            // تجميع إجمالي
             totalActual += actualPnL;
             totalHypo += hypotheticalPnL;
 
-            // إيموجي الربح/الخسارة
+            // إيموجي
             const actualEmoji = actualPnL >= 0 ? "🟢" : "🔴";
             const hypoEmoji = hypotheticalPnL >= 0 ? "🟢" : "🔴";
             const diffEmoji = diffPnL >= 0 ? "🟢" : "🔴";
 
             // 👇 تفاصيل العملة
             report += `🔸 *${assetSymbol}:*\n`;
-            report += `  - الكمية المغلقة: ${formatNumber(quantity)}\n`;
+            report += `  - الكمية المغلقة: ${formatNumber(quantity, 4)}\n`;
             report += `  - سعر الدخول: $${formatNumber(avgBuyPrice, 4)}\n`;
             report += `  - سعر البيع (الإغلاق): $${formatNumber(exitPrice, 4)}\n`;
             report += `  - السعر الحالي: $${formatNumber(currentPrice, 4)}\n`;
@@ -857,7 +866,7 @@ async function analyzeClosedPositionsAsIfHeld(days = 30) {
             report += `  - الفرق المتوقع: ${diffEmoji} ${diffPnL >= 0 ? '+' : ''}${formatNumber(diffPnL, 2)} دولار\n\n`;
         }
 
-        // 👇 الملخص الإجمالي بعد التفاصيل
+        // 👇 الملخص الإجمالي
         const totalDiff = totalHypo - totalActual;
         const actualRoi = totalInvested > 0 ? (totalActual / totalInvested) * 100 : 0;
         const hypoRoi = totalInvested > 0 ? (totalHypo / totalInvested) * 100 : 0;
@@ -877,9 +886,7 @@ async function analyzeClosedPositionsAsIfHeld(days = 30) {
         console.error("Error in analyzeClosedPositionsAsIfHeld:", e);
         return "❌ حدث خطأ أثناء تحليل السيناريو الافتراضي.";
     }
-}
-
-// =================================================================
+} =================================================================
 // SECTION 5: BOT SETUP, KEYBOARDS, AND HANDLERS
 // =================================================================
 const mainKeyboard = new Keyboard()
