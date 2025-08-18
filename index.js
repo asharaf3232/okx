@@ -786,7 +786,7 @@ async function generateAndSendCumulativeReport(ctx, asset) { try { const trades 
 // WHAT-IF ANALYSIS (لو كنت محتفظ بالصفقات المغلقة)
 // =================================================================
 
-async function analyzeClosedPositionsAsIfHeld(days = 30) {
+...async function analyzeClosedPositionsAsIfHeld(days = 30) {
     try {
         const cutoffDate = new Date();
         cutoffDate.setDate(cutoffDate.getDate() - days);
