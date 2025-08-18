@@ -790,83 +790,92 @@ async function analyzeClosedPositionsAsIfHeld(days = 30) {
         const cutoffDate = new Date();
         cutoffDate.setDate(cutoffDate.getDate() - days);
 
-        // الصفقات المغلقة خلال آخر X يوم
         const closedTrades = await getCollection("tradeHistory").find({
             closedAt: { $gte: cutoffDate }
         }).toArray();
 
         if (closedTrades.length === 0) {
-            return `📊 لم يتم إغلاق أي صفقات في آخر ${days} يوم.`;
+            return `📊 لم يتم إغلاق أي صفقات خلال آخر ${days} يوم.`;
         }
 
-        // أسعار السوق الحالية
         const prices = await okxAdapter.getMarketPrices();
-        if (!prices || prices.error) {
-            return `❌ فشل جلب الأسعار الحالية: ${prices.error || ''}`;
+        if (prices.error) {
+            return "❌ فشل في جلب أسعار السوق الحالية.";
         }
 
         let report = `🌀 *تحليل السيناريو الافتراضي – آخر ${days} يوم*\n\n`;
 
-        // متغيرات تجميع
+        // تجميع للإجمالي
         let totalActual = 0;
         let totalHypo = 0;
-        let totalDiff = 0;
         let totalInvested = 0;
 
         for (const trade of closedTrades) {
-            const instId = `${trade.asset}-USDT`;
-            const priceNow = prices[instId]?.price;
+            const assetSymbol = trade.asset;
+            const quantity = (trade.exitQuantityPercent > 0)
+                ? (trade.totalAmountBought ? trade.totalAmountBought * trade.exitQuantityPercent / 100 : 1)
+                : 1;
 
-            if (!priceNow) {
-                report += `🔸 ${trade.asset}: تعذر جلب السعر الحالي ❌\n\n`;
+            const avgBuyPrice = trade.avgBuyPrice;
+            const exitPrice = trade.avgSellPrice;
+            const currentPrice = prices[`${assetSymbol}-USDT`]?.price || 0;
+
+            if (!currentPrice) {
+                report += `ℹ️ لا يمكن جلب السعر الحالي لـ ${assetSymbol}, تخطى.\n\n`;
                 continue;
             }
 
-            const qty = trade.exitQuantityPercent === 100
-                ? trade.totalAmountBought
-                : (trade.totalAmountBought * (trade.exitQuantityPercent / 100));
-
-            if (!qty || qty <= 0) continue;
-
-            const investedCapital = trade.avgBuyPrice * qty;
+            const investedCapital = avgBuyPrice * quantity;
             totalInvested += investedCapital;
 
             // الحسابات
-            const actualPnl = trade.pnl || 0;
-            const hypotheticalPnl = (priceNow - trade.avgBuyPrice) * qty;
-            const diff = hypotheticalPnl - actualPnl;
+            const actualPnL = (exitPrice - avgBuyPrice) * quantity;
+            const actualPnLPercent = avgBuyPrice > 0 ? ((exitPrice - avgBuyPrice) / avgBuyPrice) * 100 : 0;
 
-            totalActual += actualPnl;
-            totalHypo += hypotheticalPnl;
-            totalDiff += diff;
+            const hypotheticalPnL = (currentPrice - avgBuyPrice) * quantity;
+            const hypotheticalPnLPercent = avgBuyPrice > 0 ? ((currentPrice - avgBuyPrice) / avgBuyPrice) * 100 : 0;
 
-            // تقرير تفصيلي
-            report += `🔸 *${trade.asset}:*\n`;
-            report += `  - الكمية المغلقة: ${formatNumber(qty, 4)}\n`;
-            report += `  - سعر الدخول: $${formatNumber(trade.avgBuyPrice, 4)}\n`;
-            report += `  - سعر البيع (الإغلاق): $${formatNumber(trade.avgSellPrice, 4)}\n`;
-            report += `  - السعر الحالي: $${formatNumber(priceNow, 4)}\n`;
-            report += `  - الربح/الخسارة الفعلية: $${formatNumber(actualPnl)} (${formatNumber(trade.pnlPercent)}%)\n`;
-            report += `  - لو احتفظت: $${formatNumber(hypotheticalPnl)} (${formatNumber((hypotheticalPnl / investedCapital) * 100)}%)\n`;
-            report += `  - الفرق المتوقع: $${formatNumber(diff)}\n\n`;
+            const diffPnL = hypotheticalPnL - actualPnL;
+
+            // تجميع
+            totalActual += actualPnL;
+            totalHypo += hypotheticalPnL;
+
+            // إيموجي الربح/الخسارة
+            const actualEmoji = actualPnL >= 0 ? "🟢" : "🔴";
+            const hypoEmoji = hypotheticalPnL >= 0 ? "🟢" : "🔴";
+            const diffEmoji = diffPnL >= 0 ? "🟢" : "🔴";
+
+            // 👇 تفاصيل العملة
+            report += `🔸 *${assetSymbol}:*\n`;
+            report += `  - الكمية المغلقة: ${formatNumber(quantity)}\n`;
+            report += `  - سعر الدخول: $${formatNumber(avgBuyPrice, 4)}\n`;
+            report += `  - سعر البيع (الإغلاق): $${formatNumber(exitPrice, 4)}\n`;
+            report += `  - السعر الحالي: $${formatNumber(currentPrice, 4)}\n`;
+            report += `  - الربح/الخسارة الفعلية: ${actualEmoji} ${actualPnL >= 0 ? '+' : ''}${formatNumber(actualPnL, 2)} دولار (${actualPnLPercent.toFixed(2)}%)\n`;
+            report += `  - لو احتفظت: ${hypoEmoji} ${hypotheticalPnL >= 0 ? '+' : ''}${formatNumber(hypotheticalPnL, 2)} دولار (${hypotheticalPnLPercent.toFixed(2)}%)\n`;
+            report += `  - الفرق المتوقع: ${diffEmoji} ${diffPnL >= 0 ? '+' : ''}${formatNumber(diffPnL, 2)} دولار\n\n`;
         }
 
-        // حساب الـ ROI الكلي
+        // 👇 الملخص الإجمالي بعد التفاصيل
+        const totalDiff = totalHypo - totalActual;
         const actualRoi = totalInvested > 0 ? (totalActual / totalInvested) * 100 : 0;
         const hypoRoi = totalInvested > 0 ? (totalHypo / totalInvested) * 100 : 0;
-        const diffSign = totalDiff >= 0 ? '+' : '';
 
-        // الملخص الإجمالي
+        const totalActualEmoji = totalActual >= 0 ? "🟢" : "🔴";
+        const totalHypoEmoji = totalHypo >= 0 ? "🟢" : "🔴";
+        const totalDiffEmoji = totalDiff >= 0 ? "🟢" : "🔴";
+
         report += `━━━━━━━━━━━━━━━━━━━━\n`;
         report += `📊 *الملخص الإجمالي (${days} يوم):*\n`;
-        report += `▪️ الربح/الخسارة الفعلية: $${formatNumber(totalActual)} (${formatNumber(actualRoi)}%)\n`;
-        report += `▪️ لو احتفظت: $${formatNumber(totalHypo)} (${formatNumber(hypoRoi)}%)\n`;
-        report += `▪️ الفرق الكلي: ${diffSign}$${formatNumber(totalDiff)}\n`;
+        report += `▪️ الفعلي: ${totalActualEmoji} $${formatNumber(totalActual)} (${formatNumber(actualRoi)}%)\n`;
+        report += `▪️ لو احتفظت: ${totalHypoEmoji} $${formatNumber(totalHypo)} (${formatNumber(hypoRoi)}%)\n`;
+        report += `▪️ الفرق الكلي: ${totalDiffEmoji} ${totalDiff >= 0 ? '+' : ''}$${formatNumber(totalDiff)}\n`;
 
         return report;
     } catch (e) {
         console.error("Error in analyzeClosedPositionsAsIfHeld:", e);
-        return "❌ خطأ أثناء تحليل السيناريو الافتراضي.";
+        return "❌ حدث خطأ أثناء تحليل السيناريو الافتراضي.";
     }
 }
 
