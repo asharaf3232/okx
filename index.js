@@ -146,23 +146,25 @@ function calculatePerformanceStats(history) { if (history.length < 2) return nul
 function createChartUrl(data, type = 'line', title = '', labels = [], dataLabel = '') { if (!data || data.length === 0) return null; const pnl = data[data.length - 1] - data[0]; const chartColor = pnl >= 0 ? 'rgb(75, 192, 75)' : 'rgb(255, 99, 132)'; const chartBgColor = pnl >= 0 ? 'rgba(75, 192, 75, 0.2)' : 'rgba(255, 99, 132, 0.2)'; const chartConfig = { type: 'line', data: { labels: labels, datasets: [{ label: dataLabel, data: data, fill: true, backgroundColor: chartBgColor, borderColor: chartColor, tension: 0.1 }] }, options: { title: { display: true, text: title } } }; return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&backgroundColor=white`; }
 
 // =================================================================
-// SECTION 2.5: AI ANALYSIS
+// SECTION AI: SETUP & ANALYSIS (USING GOOGLE GEMINI)
 // =================================================================
-// FIXED: Rewritten for OpenAI v4
+
+// NEW: Import Google Gemini
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+
+// NEW: AI Setup for Gemini
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ model: "gemini-pro"});
+
+// FIXED: Rewritten for Google Gemini
 async function analyzeWithAI(prompt) {
     try {
-        const completion = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo",
-            messages: [
-                { role: "system", content: "أنت محلل مالي متخصص في العملات الرقمية، تتحدث بالعربية الفصحى، وتقدم تحليلات دقيقة، واضحة، وسهلة الفهم." },
-                { role: "user", content: prompt }
-            ],
-            temperature: 0.7,
-            max_tokens: 300
-        });
-        return completion.choices[0].message.content.trim();
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const text = response.text();
+        return text.trim();
     } catch (error) {
-        console.error("AI Analysis Error:", error.message);
+        console.error("AI Analysis Error (Gemini):", error);
         return "❌ تعذر إجراء التحليل بالذكاء الاصطناعي. قد يكون هناك مشكلة في الاتصال أو المفتاح السري.";
     }
 }
@@ -178,7 +180,7 @@ async function getAIAnalysisForAsset(asset) {
     if (details.error) return `لا يمكن تحليل ${asset}: ${details.error}`;
 
     const prompt = `
-    قم بتحليل عملة ${asset} بناءً على البيانات التالية:
+    أنت محلل مالي خبير في العملات الرقمية. قم بتحليل عملة ${asset} بناءً على البيانات التالية:
     - السعر الحالي: $${formatNumber(details.price, 4)}
     - أعلى 24 ساعة: $${formatNumber(details.high24h, 4)}
     - أدنى 24 ساعة: $${formatNumber(details.low24h, 4)}
@@ -188,9 +190,9 @@ async function getAIAnalysisForAsset(asset) {
     - SMA50: $${tech.sma50 ? formatNumber(tech.sma50, 4) : 'N/A'}
     - عدد صفقاتي السابقة عليها: ${perf.tradeCount}
     - معدل نجاحي معها: ${perf.tradeCount > 0 ? formatNumber((perf.winningTrades / perf.tradeCount) * 100) : '0'}%
-    
+
     قدم تحليلًا موجزًا، توصية واضحة (شراء/بيع/مراقبة)، وسببك في فقرة واحدة بلغة عربية احترافية وسهلة.
-    `; // FIXED: Corrected Chinese character to Arabic
+    `;
 
     return await analyzeWithAI(prompt);
 }
@@ -199,18 +201,17 @@ async function getAIAnalysisForPortfolio(assets, total, capital) {
     const topAssets = assets.slice(0, 5).map(a => `${a.asset} (يمثل ${formatNumber((a.value/total)*100)}%)`).join('، ');
     const pnlPercent = capital > 0 ? ((total - capital) / capital) * 100 : 0;
     const prompt = `
-    قم بتحليل المحفظة الاستثمارية التالية:
+    أنت مستشار استثماري خبير. قم بتحليل المحفظة الاستثمارية التالية:
     - القيمة الإجمالية: $${formatNumber(total)}
     - رأس المال الأصلي: $${formatNumber(capital)}
     - إجمالي الربح/الخسارة غير المحقق: ${formatNumber(pnlPercent)}%
     - أبرز 5 أصول في المحفظة: ${topAssets}
-    
+
     قدم تقييمًا لصحة المحفظة، درجة تنوعها، وأهم المخاطر أو الفرص التي تراها. ثم قدم توصية واحدة واضحة لتحسين أدائها.
     `;
 
     return await analyzeWithAI(prompt);
 }
-
 // =================================================================
 // SECTION 3: FORMATTING AND MESSAGE FUNCTIONS
 // =================================================================
