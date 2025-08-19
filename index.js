@@ -132,10 +132,9 @@ const loadPriceTracker = async () => await getConfig("priceTracker", { totalPort
 const savePriceTracker = (tracker) => saveConfig("priceTracker", tracker);
 function formatNumber(num, decimals = 2) { const number = parseFloat(num); if (isNaN(number) || !isFinite(number)) return (0).toFixed(decimals); return number.toFixed(decimals); }
 async function sendDebugMessage(message) { const settings = await loadSettings(); if (settings.debugMode) { try { await bot.api.sendMessage(AUTHORIZED_USER_ID, `🐞 *Debug (OKX):* ${message}`, { parse_mode: "Markdown" }); } catch (e) { console.error("Failed to send debug message:", e); } } }
-// NEW: Helper function to sanitize text for Telegram's MarkdownV2
-// NEW: Helper function to sanitize text for Telegram's MarkdownV2 (Robust Version)
+// FINAL VERSION: Robust sanitizer for Telegram MarkdownV2
 function sanitizeMarkdownV2(text = '') {
-    // This uses a regular expression to escape all reserved characters for MarkdownV2
+    // This uses a regular expression to correctly escape all reserved characters
     return text.replace(/([_*\[\]()~`>#+\-=|{}.!])/g, '\\$1');
 }
 // =================================================================
