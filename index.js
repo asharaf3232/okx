@@ -263,102 +263,78 @@ async function updatePositionAndAnalyze(asset, amountChange, price, newTotalAmou
     return { analysisResult };
 }
 
+// MODIFIED: A more robust version of monitorBalanceChanges to prevent state loops
 async function monitorBalanceChanges() {
     try {
-        await sendDebugMessage("Starting comprehensive portfolio and price monitoring...");
-        const alertSettings = await loadAlertSettings();
-        const priceTracker = await loadPriceTracker();
+        await sendDebugMessage("Checking balance changes...");
+
+        // 1. Load the last known state from the database
+        const previousState = await loadBalanceState();
+        const previousBalances = previousState.balances || {};
+
+        // 2. Fetch the current live state from the exchange
         const currentBalance = await okxAdapter.getBalanceForComparison();
         if (!currentBalance) {
-            await sendDebugMessage("Could not fetch current balance.");
+            await sendDebugMessage("Could not fetch current balance to compare.");
             return;
         }
+
         const prices = await okxAdapter.getMarketPrices();
         if (!prices || prices.error) {
-            await sendDebugMessage("Could not fetch market prices.");
+            await sendDebugMessage("Could not fetch market prices to compare.");
             return;
         }
-        const { assets: newAssets, total: currentTotalValue, usdtValue: newUsdtValue, error } = await okxAdapter.getPortfolio(prices);
-        if (error || currentTotalValue === undefined) {
+
+        const { assets: newAssets, total: newTotalValue, usdtValue: newUsdtValue, error } = await okxAdapter.getPortfolio(prices);
+        if (error || newTotalValue === undefined) {
             await sendDebugMessage(`Portfolio fetch error: ${error}`);
             return;
         }
-        const previousBalances = priceTracker.balances || {};
-        const oldTotalValue = priceTracker.totalPortfolioValue || 0;
-        const oldUsdtValue = previousBalances['USDT'] || 0;
-        if (oldTotalValue === 0) {
-            priceTracker.totalPortfolioValue = currentTotalValue;
-            priceTracker.balances = currentBalance;
-            newAssets.forEach(a => {
-                if (a.price) priceTracker.assets[a.asset] = a.price;
-            });
-            await savePriceTracker(priceTracker);
+
+        // 3. Handle first-run initialization
+        if (Object.keys(previousBalances).length === 0) {
+            await sendDebugMessage("Initializing first balance state. No notifications will be sent.");
+            await saveBalanceState({ balances: currentBalance, totalValue: newTotalValue });
             return;
         }
-        let trackerUpdated = false;
+        
+        const oldTotalValue = previousState.totalValue || 0;
         let stateNeedsUpdate = false;
-        const totalChangePercent = ((currentTotalValue - oldTotalValue) / oldTotalValue) * 100;
-        if (Math.abs(totalChangePercent) >= alertSettings.global) {
-            const movementText = totalChangePercent > 0 ? 'صعود' : 'هبوط';
-            const sign = totalChangePercent > 0 ? '+' : '';
-            const message = `📊 *تنبيه حركة للمحفظة الإجمالية!* \n\n` +
-                            `*الحركة:* ${movementText} بنسبة \`${sign}${formatNumber(totalChangePercent)}%\`\n` +
-                            `*القيمة السابقة:* \`$${formatNumber(oldTotalValue)}\`\n` +
-                            `*القيمة الحالية:* \`$${formatNumber(currentTotalValue)}\``;
-            await bot.api.sendMessage(AUTHORIZED_USER_ID, message, { parse_mode: "Markdown" });
-            priceTracker.totalPortfolioValue = currentTotalValue;
-            trackerUpdated = true;
-            await savePriceTracker(priceTracker); 
-        }
-        for (const asset of newAssets) {
-            if (asset.asset === 'USDT' || !asset.price) continue;
-            const lastPrice = priceTracker.assets[asset.asset];
-            if (!lastPrice) {
-                priceTracker.assets[asset.asset] = asset.price;
-                trackerUpdated = true;
-                continue;
-            }
-            const changePercent = ((asset.price - lastPrice) / lastPrice) * 100;
-            const threshold = alertSettings.overrides[asset.asset] || alertSettings.global;
-            if (Math.abs(changePercent) >= threshold) {
-                const movementText = changePercent > 0 ? 'صعود' : 'هبوط';
-                const message = `📈 *تنبيه حركة سعر لأصل!* \`${asset.asset}\`\n*الحركة:* ${movementText} بنسبة \`${formatNumber(changePercent)}%\`\n*السعر الحالي:* \`$${formatNumber(asset.price, 4)}\``;
-                await bot.api.sendMessage(AUTHORIZED_USER_ID, message, { parse_mode: "Markdown" });
-                priceTracker.assets[asset.asset] = asset.price;
-                trackerUpdated = true;
-            }
-        }
-        const allAssetsSet = new Set([...Object.keys(previousBalances), ...Object.keys(currentBalance)]);
-        for (const asset of allAssetsSet) {
+        
+        // 4. Compare the old state with the new state to find changes
+        const allAssets = new Set([...Object.keys(previousBalances), ...Object.keys(currentBalance)]);
+        for (const asset of allAssets) {
             if (asset === 'USDT') continue;
+
             const prevAmount = previousBalances[asset] || 0;
             const currAmount = currentBalance[asset] || 0;
             const difference = currAmount - prevAmount;
             const priceData = prices[`${asset}-USDT`];
-            if (!priceData || !priceData.price || isNaN(priceData.price) || Math.abs(difference * priceData.price) < 1) continue;
-            await sendDebugMessage(`Detected change for ${asset}: ${difference}`);
+
+            // If the change in value is less than $1, ignore it.
+            if (!priceData || !priceData.price || isNaN(priceData.price) || Math.abs(difference * priceData.price) < 1) {
+                continue;
+            }
+
+            // A significant change was detected!
             stateNeedsUpdate = true;
+            await sendDebugMessage(`Detected change for ${asset}: ${difference}`);
+
             const { analysisResult } = await updatePositionAndAnalyze(asset, difference, priceData.price, currAmount, oldTotalValue);
             if (analysisResult.type === 'none') continue;
+
+            // Prepare and send the notification
             const tradeValue = Math.abs(difference) * priceData.price;
             const newAssetData = newAssets.find(a => a.asset === asset);
             const newAssetValue = newAssetData ? newAssetData.value : 0;
-            const newAssetWeight = currentTotalValue > 0 ? (newAssetValue / currentTotalValue) * 100 : 0;
-            const newCashPercent = currentTotalValue > 0 ? (newUsdtValue / currentTotalValue) * 100 : 0;
-            const baseDetails = {
-                asset,
-                price: priceData.price,
-                amountChange: difference,
-                tradeValue,
-                oldTotalValue,
-                newAssetWeight,
-                newUsdtValue,
-                newCashPercent,
-                oldUsdtValue,
-                position: analysisResult.data.position
-            };
+            const newAssetWeight = newTotalValue > 0 ? (newAssetValue / newTotalValue) * 100 : 0;
+            const newCashPercent = newTotalValue > 0 ? (newUsdtValue / newTotalValue) * 100 : 0;
+            const oldUsdtValue = previousBalances['USDT'] || 0;
+
+            const baseDetails = { asset, price: priceData.price, amountChange: difference, tradeValue, oldTotalValue, newAssetWeight, newUsdtValue, newCashPercent, oldUsdtValue, position: analysisResult.data.position };
             const settings = await loadSettings();
             let privateMessage, publicMessage;
+
             if (analysisResult.type === 'buy') {
                 privateMessage = formatPrivateBuy(baseDetails);
                 publicMessage = formatPublicBuy(baseDetails);
@@ -389,22 +365,21 @@ async function monitorBalanceChanges() {
                 }
             }
         }
-        if (trackerUpdated) {
-            priceTracker.balances = currentBalance;
-            await savePriceTracker(priceTracker);
-            await sendDebugMessage("Price tracker updated.");
-        }
+
+        // 5. CRITICAL STEP: If any change was detected, save the new state. This breaks the loop.
         if (stateNeedsUpdate) {
-            await saveBalanceState({ balances: currentBalance, totalValue: currentTotalValue });
-            await sendDebugMessage("Balance state updated after changes.");
+            await saveBalanceState({ balances: currentBalance, totalValue: newTotalValue });
+            await sendDebugMessage("State updated successfully after processing changes.");
         } else {
             await sendDebugMessage("No significant balance changes detected.");
         }
+
     } catch (e) {
         console.error("CRITICAL ERROR in monitorBalanceChanges:", e);
         await sendDebugMessage(`CRITICAL ERROR in monitorBalanceChanges: ${e.message}`);
     }
 }
+
 async function trackPositionHighLow() { try { const positions = await loadPositions(); if (Object.keys(positions).length === 0) return; const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) return; let positionsUpdated = false; for (const symbol in positions) { const position = positions[symbol]; const currentPrice = prices[`${symbol}-USDT`]?.price; if (currentPrice) { if (!position.highestPrice || currentPrice > position.highestPrice) { position.highestPrice = currentPrice; positionsUpdated = true; } if (!position.lowestPrice || currentPrice < position.lowestPrice) { position.lowestPrice = currentPrice; positionsUpdated = true; } } } if (positionsUpdated) { await savePositions(positions); await sendDebugMessage("Updated position high/low prices."); } } catch(e) { console.error("CRITICAL ERROR in trackPositionHighLow:", e); } }
 async function checkPriceAlerts() { try { const alerts = await loadAlerts(); if (alerts.length === 0) return; const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) return; const remainingAlerts = []; let triggered = false; for (const alert of alerts) { const currentPrice = prices[alert.instId]?.price; if (currentPrice === undefined) { remainingAlerts.push(alert); continue; } if ((alert.condition === '>' && currentPrice > alert.price) || (alert.condition === '<' && currentPrice < alert.price)) { await bot.api.sendMessage(AUTHORIZED_USER_ID, `🚨 *تنبيه سعر!* \`${alert.instId}\`\nالشرط: ${alert.condition} ${alert.price}\nالسعر الحالي: \`${currentPrice}\``, { parse_mode: "Markdown" }); triggered = true; } else { remainingAlerts.push(alert); } } if (triggered) await saveAlerts(remainingAlerts); } catch (error) { console.error("Error in checkPriceAlerts:", error); } }
 async function checkPriceMovements() { try { await sendDebugMessage("Checking price movements..."); const alertSettings = await loadAlertSettings(); const priceTracker = await loadPriceTracker(); const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) return; const { assets, total: currentTotalValue, error } = await okxAdapter.getPortfolio(prices); if (error || currentTotalValue === undefined) return; if (priceTracker.totalPortfolioValue === 0) { priceTracker.totalPortfolioValue = currentTotalValue; assets.forEach(a => { if (a.price) priceTracker.assets[a.asset] = a.price; }); await savePriceTracker(priceTracker); return; } let trackerUpdated = false; for (const asset of assets) { if (asset.asset === 'USDT' || !asset.price) continue; const lastPrice = priceTracker.assets[asset.asset]; if (lastPrice) { const changePercent = ((asset.price - lastPrice) / lastPrice) * 100; const threshold = alertSettings.overrides[asset.asset] || alertSettings.global; if (Math.abs(changePercent) >= threshold) { const movementText = changePercent > 0 ? 'صعود' : 'هبوط'; const message = `📈 *تنبيه حركة سعر لأصل!* \`${asset.asset}\`\n*الحركة:* ${movementText} بنسبة \`${formatNumber(changePercent)}%\`\n*السعر الحالي:* \`$${formatNumber(asset.price, 4)}\``; await bot.api.sendMessage(AUTHORIZED_USER_ID, message, { parse_mode: "Markdown" }); priceTracker.assets[asset.asset] = asset.price; trackerUpdated = true; } } else { priceTracker.assets[asset.asset] = asset.price; trackerUpdated = true; } } if (trackerUpdated) await savePriceTracker(priceTracker); } catch (e) { console.error("CRITICAL ERROR in checkPriceMovements:", e); } }
@@ -866,7 +841,7 @@ async function startBot() {
         setInterval(monitorBalanceChanges, 60 * 1000);
         setInterval(trackPositionHighLow, 60 * 1000);
         setInterval(checkPriceAlerts, 30 * 1000);
-        // setInterval(checkPriceMovements, 60 * 1000); // This logic is now inside monitorBalanceChanges
+        setInterval(checkPriceMovements, 60 * 1000); // This logic is now inside monitorBalanceChanges
         setInterval(monitorVirtualTrades, 30 * 1000);
         setInterval(runHourlyJobs, 60 * 60 * 1000);
         setInterval(runDailyJobs, 24 * 60 * 60 * 1000);
