@@ -143,14 +143,29 @@ function calculateRSI(closes, period = 14) { if (closes.length < period + 1) ret
 async function getTechnicalAnalysis(instId) { const candleData = (await getHistoricalCandles(instId, '1D', 51)); if (candleData.length < 51) return { error: "بيانات الشموع غير كافية." }; const closes = candleData.map(c => c.close); return { rsi: calculateRSI(closes, 14), sma20: calculateSMA(closes, 20), sma50: calculateSMA(closes, 50) }; }
 function calculatePerformanceStats(history) { if (history.length < 2) return null; const values = history.map(h => h.total); const startValue = values[0]; const endValue = values[values.length - 1]; const pnl = endValue - startValue; const pnlPercent = (startValue > 0) ? (pnl / startValue) * 100 : 0; const maxValue = Math.max(...values); const minValue = Math.min(...values); const avgValue = values.reduce((sum, val) => sum + val, 0) / values.length; const dailyReturns = []; for (let i = 1; i < values.length; i++) { dailyReturns.push((values[i] - values[i - 1]) / values[i - 1]); } const bestDayChange = dailyReturns.length > 0 ? Math.max(...dailyReturns) * 100 : 0; const worstDayChange = dailyReturns.length > 0 ? Math.min(...dailyReturns) * 100 : 0; const avgReturn = dailyReturns.length > 0 ? dailyReturns.reduce((sum, ret) => sum + ret, 0) / dailyReturns.length : 0; const volatility = dailyReturns.length > 0 ? Math.sqrt(dailyReturns.map(x => Math.pow(x - avgReturn, 2)).reduce((a, b) => a + b) / dailyReturns.length) * 100 : 0; let volText = "متوسط"; if(volatility < 1) volText = "منخفض"; if(volatility > 5) volText = "مرتفع"; return { startValue, endValue, pnl, pnlPercent, maxValue, minValue, avgValue, bestDayChange, worstDayChange, volatility, volText }; }
 function createChartUrl(data, type = 'line', title = '', labels = [], dataLabel = '') { if (!data || data.length === 0) return null; const pnl = data[data.length - 1] - data[0]; const chartColor = pnl >= 0 ? 'rgb(75, 192, 75)' : 'rgb(255, 99, 132)'; const chartBgColor = pnl >= 0 ? 'rgba(75, 192, 75, 0.2)' : 'rgba(255, 99, 132, 0.2)'; const chartConfig = { type: 'line', data: { labels: labels, datasets: [{ label: dataLabel, data: data, fill: true, backgroundColor: chartBgColor, borderColor: chartColor, tension: 0.1 }] }, options: { title: { display: true, text: title } } }; return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&backgroundColor=white`; }
-
 // =================================================================
-// SECTION 2.5: AI ANALYSIS (USING GOOGLE GEMINI)
+// SECTION 2.5: AI ANALYSIS (IMPROVED & SAFER)
 // =================================================================
 async function analyzeWithAI(prompt) {
     try {
-        const result = await geminiModel.generateContent(prompt);
+        // We combine the system instruction and the user prompt for better results.
+        const fullPrompt = `
+        أنت محلل مالي خبير ومستشار استثماري متخصص في العملات الرقمية، تتحدث بالعربية الفصحى، وتقدم تحليلات دقيقة وموجزة. في نهاية كل تحليل، يجب عليك إضافة السطر التالي بالضبط كما هو: "هذا التحليل لأغراض معلوماتية فقط وليس توصية مالية."
+        
+        ---
+        
+        الطلب: ${prompt}
+        `;
+
+        const result = await geminiModel.generateContent(fullPrompt);
         const response = await result.response;
+
+        // Check for safety blocks from Google
+        if (response.promptFeedback?.blockReason) {
+            console.error("AI Analysis Blocked:", response.promptFeedback.blockReason);
+            return `❌ تم حظر التحليل من قبل Google لأسباب تتعلق بالسلامة: ${response.promptFeedback.blockReason}`;
+        }
+        
         const text = response.text();
         return text.trim();
     } catch (error) {
@@ -167,10 +182,13 @@ async function getAIAnalysisForAsset(asset) {
         getHistoricalPerformance(asset)
     ]);
 
+    // Added more robust error checking
     if (details.error) return `لا يمكن تحليل ${asset}: ${details.error}`;
+    if (tech.error) return `لا يمكن تحليل ${asset}: ${tech.error}`;
+    if (!perf) return `لا يمكن تحليل ${asset}: فشل جلب الأداء التاريخي.`;
 
     const prompt = `
-    أنت محلل مالي خبير في العملات الرقمية. قم بتحليل عملة ${asset} بناءً على البيانات التالية:
+    قم بتحليل عملة ${asset} بناءً على البيانات التالية:
     - السعر الحالي: $${formatNumber(details.price, 4)}
     - أعلى 24 ساعة: $${formatNumber(details.high24h, 4)}
     - أدنى 24 ساعة: $${formatNumber(details.low24h, 4)}
@@ -191,7 +209,7 @@ async function getAIAnalysisForPortfolio(assets, total, capital) {
     const topAssets = assets.slice(0, 5).map(a => `${a.asset} (يمثل ${formatNumber((a.value/total)*100)}%)`).join('، ');
     const pnlPercent = capital > 0 ? ((total - capital) / capital) * 100 : 0;
     const prompt = `
-    أنت مستشار استثماري خبير. قم بتحليل المحفظة الاستثمارية التالية:
+    قم بتحليل المحفظة الاستثمارية التالية:
     - القيمة الإجمالية: $${formatNumber(total)}
     - رأس المال الأصلي: $${formatNumber(capital)}
     - إجمالي الربح/الخسارة غير المحقق: ${formatNumber(pnlPercent)}%
