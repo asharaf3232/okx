@@ -1,19 +1,20 @@
 {
-  "name": "okx-bot",
-  "version": "1.0.0",
-  "description": "OKX Analytics Bot",
-  "main": "index.js",
-  "scripts": {
-    "start": "node index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "author": "",
-  "license": "ISC",
-  "dependencies": {
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "grammy": "^1.24.0",
-    "mongodb": "^6.7.0",
-    "node-fetch": "^2.7.0"
-  }
+  "name": "okx-bot",
+  "version": "1.0.0",
+  "description": "OKX Analytics Bot",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "grammy": "^1.24.0",
+    "mongodb": "^6.7.0",
+    "node-fetch": "^2.7.0",
+    "openai": "^4.52.2"
+  }
 }
