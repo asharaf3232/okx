@@ -1,11 +1,11 @@
 // =================================================================
-// Advanced Analytics Bot - v140.0 (Final Stable Version)
+// Advanced Analytics Bot - v137.0 (Final Grammy + Gemini Version)
 // =================================================================
 const express = require("express");
 const { Bot, Keyboard, InlineKeyboard, webhookCallback } = require("grammy");
 const fetch = require("node-fetch");
 const crypto = require("crypto");
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { GoogleGenerativeAI } = require("@google/generative-ai"); // Using Google Gemini
 require("dotenv").config();
 const { connectDB, getDB } = require("./database.js");
 
@@ -20,17 +20,83 @@ let waitingState = null;
 
 // --- AI Setup ---
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest"});
+
 
 // =================================================================
 // SECTION 0: OKX API ADAPTER
 // =================================================================
 class OKXAdapter {
-    constructor() { this.name = "OKX"; this.baseURL = "https://www.okx.com"; }
-    getHeaders(method, path, body = "") { const timestamp = new Date().toISOString(); const prehash = timestamp + method.toUpperCase() + path + (typeof body === 'object' ? JSON.stringify(body) : body); const sign = crypto.createHmac("sha256", process.env.OKX_API_SECRET_KEY).update(prehash).digest("base64"); return { "OK-ACCESS-KEY": process.env.OKX_API_KEY, "OK-ACCESS-SIGN": sign, "OK-ACCESS-TIMESTAMP": timestamp, "OK-ACCESS-PASSPHRASE": process.env.OKX_API_PASSPHRASE, "Content-Type": "application/json", }; }
-    async getMarketPrices() { try { const res = await fetch(`${this.baseURL}/api/v5/market/tickers?instType=SPOT`); const json = await res.json(); if (json.code !== '0') return { error: `فشل جلب أسعار السوق: ${json.msg}` }; const prices = {}; if (json.data) { json.data.forEach(t => { if (t.instId.endsWith('-USDT')) { const lastPrice = parseFloat(t.last); const openPrice = parseFloat(t.open24h); let change24h = 0; if (openPrice > 0) change24h = (lastPrice - openPrice) / openPrice; prices[t.instId] = { price: lastPrice, open24h: openPrice, change24h, volCcy24h: parseFloat(t.volCcy24h) }; } }); } return prices; } catch (e) { return { error: "خطأ استثنائي عند جلب أسعار السوق." }; } }
-    async getPortfolio(prices) { try { const path = "/api/v5/account/balance"; const res = await fetch(`${this.baseURL}${path}`, { headers: this.getHeaders("GET", path) }); const json = await res.json(); if (json.code !== '0' || !json.data || !json.data[0] || !json.data[0].details) return { error: `فشل جلب المحفظة: ${json.msg || 'بيانات غير متوقعة'}` }; let assets = [], total = 0, usdtValue = 0; json.data[0].details.forEach(asset => { const amount = parseFloat(asset.eq); if (amount > 0) { const instId = `${asset.ccy}-USDT`; const priceData = prices[instId] || { price: (asset.ccy === "USDT" ? 1 : 0), change24h: 0 }; const value = amount * priceData.price; total += value; if (asset.ccy === "USDT") usdtValue = value; if (value >= 1) assets.push({ asset: asset.ccy, price: priceData.price, value, amount, change24h: priceData.change24h }); } }); assets.sort((a, b) => b.value - a.value); return { assets, total, usdtValue }; } catch (e) { return { error: "خطأ في الاتصال بمنصة OKX." }; } }
-    async getBalanceForComparison() { try { const path = "/api/v5/account/balance"; const res = await fetch(`${this.baseURL}${path}`, { headers: this.getHeaders("GET", path) }); const json = await res.json(); if (json.code !== '0' || !json.data || !json.data[0] || !json.data[0].details) return null; const balances = {}; json.data[0].details.forEach(asset => { const amount = parseFloat(asset.eq); if (amount > 0) balances[asset.ccy] = amount; }); return balances; } catch (e) { return null; } }
+    constructor() {
+        this.name = "OKX";
+        this.baseURL = "https://www.okx.com";
+    }
+    getHeaders(method, path, body = "") {
+        const timestamp = new Date().toISOString();
+        const prehash = timestamp + method.toUpperCase() + path + (typeof body === 'object' ? JSON.stringify(body) : body);
+        const sign = crypto.createHmac("sha256", process.env.OKX_API_SECRET_KEY).update(prehash).digest("base64");
+        return {
+            "OK-ACCESS-KEY": process.env.OKX_API_KEY,
+            "OK-ACCESS-SIGN": sign,
+            "OK-ACCESS-TIMESTAMP": timestamp,
+            "OK-ACCESS-PASSPHRASE": process.env.OKX_API_PASSPHRASE,
+            "Content-Type": "application/json",
+        };
+    }
+    async getMarketPrices() {
+        try {
+            const tickersRes = await fetch(`${this.baseURL}/api/v5/market/tickers?instType=SPOT`);
+            const tickersJson = await tickersRes.json();
+            if (tickersJson.code !== '0') { return { error: `فشل جلب أسعار السوق: ${tickersJson.msg}` }; }
+            const prices = {};
+            tickersJson.data.forEach(t => {
+                if (t.instId.endsWith('-USDT')) {
+                    const lastPrice = parseFloat(t.last);
+                    const openPrice = parseFloat(t.open24h);
+                    let change24h = 0;
+                    if (openPrice > 0) change24h = (lastPrice - openPrice) / openPrice;
+                    prices[t.instId] = { price: lastPrice, open24h: openPrice, change24h, volCcy24h: parseFloat(t.volCcy24h) };
+                }
+            });
+            return prices;
+        } catch (error) { return { error: "خطأ استثنائي عند جلب أسعار السوق." }; }
+    }
+    async getPortfolio(prices) {
+        try {
+            const path = "/api/v5/account/balance";
+            const res = await fetch(`${this.baseURL}${path}`, { headers: this.getHeaders("GET", path) });
+            const json = await res.json();
+            if (json.code !== '0' || !json.data || !json.data[0] || !json.data[0].details) { return { error: `فشل جلب المحفظة: ${json.msg || 'بيانات غير متوقعة'}` }; }
+            let assets = [], total = 0, usdtValue = 0;
+            json.data[0].details.forEach(asset => {
+                const amount = parseFloat(asset.eq);
+                if (amount > 0) {
+                    const instId = `${asset.ccy}-USDT`;
+                    const priceData = prices[instId] || { price: (asset.ccy === "USDT" ? 1 : 0), change24h: 0 };
+                    const value = amount * priceData.price;
+                    total += value;
+                    if (asset.ccy === "USDT") usdtValue = value;
+                    if (value >= 1) assets.push({ asset: asset.ccy, price: priceData.price, value, amount, change24h: priceData.change24h });
+                }
+            });
+            assets.sort((a, b) => b.value - a.value);
+            return { assets, total, usdtValue };
+        } catch (e) { return { error: "خطأ في الاتصال بمنصة OKX." }; }
+    }
+    async getBalanceForComparison() {
+        try {
+            const path = "/api/v5/account/balance";
+            const res = await fetch(`${this.baseURL}${path}`, { headers: this.getHeaders("GET", path) });
+            const json = await res.json();
+            if (json.code !== '0' || !json.data || !json.data[0] || !json.data[0].details) { return null; }
+            const balances = {};
+            json.data[0].details.forEach(asset => {
+                const amount = parseFloat(asset.eq);
+                if (amount > 0) balances[asset.ccy] = amount;
+            });
+            return balances;
+        } catch (e) { return null; }
+    }
 }
 const okxAdapter = new OKXAdapter();
 
@@ -61,12 +127,10 @@ const loadAlerts = async () => await getConfig("priceAlerts", []);
 const saveAlerts = (alerts) => saveConfig("priceAlerts", alerts);
 const loadAlertSettings = async () => await getConfig("alertSettings", { global: 5, overrides: {} });
 const saveAlertSettings = (settings) => saveConfig("alertSettings", settings);
+const loadPriceTracker = async () => await getConfig("priceTracker", { totalPortfolioValue: 0, assets: {} });
+const savePriceTracker = (tracker) => saveConfig("priceTracker", tracker);
 function formatNumber(num, decimals = 2) { const number = parseFloat(num); if (isNaN(number) || !isFinite(number)) return (0).toFixed(decimals); return number.toFixed(decimals); }
 async function sendDebugMessage(message) { const settings = await loadSettings(); if (settings.debugMode) { try { await bot.api.sendMessage(AUTHORIZED_USER_ID, `🐞 *Debug (OKX):* ${message}`, { parse_mode: "Markdown" }); } catch (e) { console.error("Failed to send debug message:", e); } } }
-// FINAL VERSION: Robust sanitizer for Telegram MarkdownV2
-function sanitizeMarkdownV2(text = '') {
-    return text.replace(/([_*\[\]()~`>#+\-=|{}.!])/g, '\\$1');
-}
 
 // =================================================================
 // SECTION 2: DATA PROCESSING FUNCTIONS
@@ -79,20 +143,31 @@ function calculateRSI(closes, period = 14) { if (closes.length < period + 1) ret
 async function getTechnicalAnalysis(instId) { const candleData = (await getHistoricalCandles(instId, '1D', 51)); if (candleData.length < 51) return { error: "بيانات الشموع غير كافية." }; const closes = candleData.map(c => c.close); return { rsi: calculateRSI(closes, 14), sma20: calculateSMA(closes, 20), sma50: calculateSMA(closes, 50) }; }
 function calculatePerformanceStats(history) { if (history.length < 2) return null; const values = history.map(h => h.total); const startValue = values[0]; const endValue = values[values.length - 1]; const pnl = endValue - startValue; const pnlPercent = (startValue > 0) ? (pnl / startValue) * 100 : 0; const maxValue = Math.max(...values); const minValue = Math.min(...values); const avgValue = values.reduce((sum, val) => sum + val, 0) / values.length; const dailyReturns = []; for (let i = 1; i < values.length; i++) { dailyReturns.push((values[i] - values[i - 1]) / values[i - 1]); } const bestDayChange = dailyReturns.length > 0 ? Math.max(...dailyReturns) * 100 : 0; const worstDayChange = dailyReturns.length > 0 ? Math.min(...dailyReturns) * 100 : 0; const avgReturn = dailyReturns.length > 0 ? dailyReturns.reduce((sum, ret) => sum + ret, 0) / dailyReturns.length : 0; const volatility = dailyReturns.length > 0 ? Math.sqrt(dailyReturns.map(x => Math.pow(x - avgReturn, 2)).reduce((a, b) => a + b) / dailyReturns.length) * 100 : 0; let volText = "متوسط"; if(volatility < 1) volText = "منخفض"; if(volatility > 5) volText = "مرتفع"; return { startValue, endValue, pnl, pnlPercent, maxValue, minValue, avgValue, bestDayChange, worstDayChange, volatility, volText }; }
 function createChartUrl(data, type = 'line', title = '', labels = [], dataLabel = '') { if (!data || data.length === 0) return null; const pnl = data[data.length - 1] - data[0]; const chartColor = pnl >= 0 ? 'rgb(75, 192, 75)' : 'rgb(255, 99, 132)'; const chartBgColor = pnl >= 0 ? 'rgba(75, 192, 75, 0.2)' : 'rgba(255, 99, 132, 0.2)'; const chartConfig = { type: 'line', data: { labels: labels, datasets: [{ label: dataLabel, data: data, fill: true, backgroundColor: chartBgColor, borderColor: chartColor, tension: 0.1 }] }, options: { title: { display: true, text: title } } }; return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&backgroundColor=white`; }
-
 // =================================================================
-// SECTION 2.5: AI ANALYSIS
+// SECTION 2.5: AI ANALYSIS (IMPROVED & SAFER)
 // =================================================================
 async function analyzeWithAI(prompt) {
     try {
-        const fullPrompt = `أنت محلل مالي خبير ومستشار استثماري متخصص في العملات الرقمية، تتحدث بالعربية الفصحى، وتقدم تحليلات دقيقة وموجزة. في نهاية كل تحليل، يجب عليك إضافة السطر التالي بالضبط كما هو: "هذا التحليل لأغراض معلوماتية فقط وليس توصية مالية."\n\n---\n\nالطلب: ${prompt}`;
+        // We combine the system instruction and the user prompt for better results.
+        const fullPrompt = `
+        أنت محلل مالي خبير ومستشار استثماري متخصص في العملات الرقمية، تتحدث بالعربية الفصحى، وتقدم تحليلات دقيقة وموجزة. في نهاية كل تحليل، يجب عليك إضافة السطر التالي بالضبط كما هو: "هذا التحليل لأغراض معلوماتية فقط وليس توصية مالية."
+        
+        ---
+        
+        الطلب: ${prompt}
+        `;
+
         const result = await geminiModel.generateContent(fullPrompt);
         const response = await result.response;
+
+        // Check for safety blocks from Google
         if (response.promptFeedback?.blockReason) {
             console.error("AI Analysis Blocked:", response.promptFeedback.blockReason);
             return `❌ تم حظر التحليل من قبل Google لأسباب تتعلق بالسلامة: ${response.promptFeedback.blockReason}`;
         }
-        return response.text().trim();
+        
+        const text = response.text();
+        return text.trim();
     } catch (error) {
         console.error("AI Analysis Error (Gemini):", error);
         return "❌ تعذر إجراء التحليل بالذكاء الاصطناعي. قد يكون هناك مشكلة في الاتصال أو المفتاح السري.";
@@ -106,9 +181,12 @@ async function getAIAnalysisForAsset(asset) {
         getTechnicalAnalysis(instId),
         getHistoricalPerformance(asset)
     ]);
+
+    // Added more robust error checking
     if (details.error) return `لا يمكن تحليل ${asset}: ${details.error}`;
     if (tech.error) return `لا يمكن تحليل ${asset}: ${tech.error}`;
     if (!perf) return `لا يمكن تحليل ${asset}: فشل جلب الأداء التاريخي.`;
+
     const prompt = `
     قم بتحليل عملة ${asset} بناءً على البيانات التالية:
     - السعر الحالي: $${formatNumber(details.price, 4)}
@@ -121,7 +199,9 @@ async function getAIAnalysisForAsset(asset) {
     - عدد صفقاتي السابقة عليها: ${perf.tradeCount}
     - معدل نجاحي معها: ${perf.tradeCount > 0 ? formatNumber((perf.winningTrades / perf.tradeCount) * 100) : '0'}%
     
-    قدم تحليلًا موجزًا، توصية واضحة (شراء/بيع/مراقبة)، وسببك في فقرة واحدة بلغة عربية احترافية وسهلة.`;
+    قدم تحليلًا موجزًا، توصية واضحة (شراء/بيع/مراقبة)، وسببك في فقرة واحدة بلغة عربية احترافية وسهلة.
+    `;
+
     return await analyzeWithAI(prompt);
 }
 
@@ -135,7 +215,9 @@ async function getAIAnalysisForPortfolio(assets, total, capital) {
     - إجمالي الربح/الخسارة غير المحقق: ${formatNumber(pnlPercent)}%
     - أبرز 5 أصول في المحفظة: ${topAssets}
     
-    قدم تقييمًا لصحة المحفظة، درجة تنوعها، وأهم المخاطر أو الفرص التي تراها. ثم قدم توصية واحدة واضحة لتحسين أدائها.`;
+    قدم تقييمًا لصحة المحفظة، درجة تنوعها، وأهم المخاطر أو الفرص التي تراها. ثم قدم توصية واحدة واضحة لتحسين أدائها.
+    `;
+
     return await analyzeWithAI(prompt);
 }
 
@@ -161,6 +243,7 @@ async function updatePositionAndAnalyze(asset, amountChange, price, newTotalAmou
 async function monitorBalanceChanges() { try { await sendDebugMessage("Checking balance changes..."); const previousState = await loadBalanceState(); const previousBalances = previousState.balances || {}; const currentBalance = await okxAdapter.getBalanceForComparison(); if (!currentBalance) { await sendDebugMessage("Could not fetch current balance to compare."); return; } const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) { await sendDebugMessage("Could not fetch market prices to compare."); return; } const { assets: newAssets, total: newTotalValue, usdtValue: newUsdtValue, error } = await okxAdapter.getPortfolio(prices); if (error || newTotalValue === undefined) { await sendDebugMessage(`Portfolio fetch error: ${error}`); return; } if (Object.keys(previousBalances).length === 0) { await sendDebugMessage("Initializing first balance state. No notifications will be sent."); await saveBalanceState({ balances: currentBalance, totalValue: newTotalValue }); return; } const oldTotalValue = previousState.totalValue || 0; let stateNeedsUpdate = false; const allAssets = new Set([...Object.keys(previousBalances), ...Object.keys(currentBalance)]); for (const asset of allAssets) { if (asset === 'USDT') continue; const prevAmount = previousBalances[asset] || 0; const currAmount = currentBalance[asset] || 0; const difference = currAmount - prevAmount; const priceData = prices[`${asset}-USDT`]; if (!priceData || !priceData.price || isNaN(priceData.price) || Math.abs(difference * priceData.price) < 1) { continue; } stateNeedsUpdate = true; await sendDebugMessage(`Detected change for ${asset}: ${difference}`); const { analysisResult } = await updatePositionAndAnalyze(asset, difference, priceData.price, currAmount, oldTotalValue); if (analysisResult.type === 'none') continue; const tradeValue = Math.abs(difference) * priceData.price; const newAssetData = newAssets.find(a => a.asset === asset); const newAssetValue = newAssetData ? newAssetData.value : 0; const newAssetWeight = newTotalValue > 0 ? (newAssetValue / newTotalValue) * 100 : 0; const newCashPercent = newTotalValue > 0 ? (newUsdtValue / newTotalValue) * 100 : 0; const oldUsdtValue = previousBalances['USDT'] || 0; const baseDetails = { asset, price: priceData.price, amountChange: difference, tradeValue, oldTotalValue, newAssetWeight, newUsdtValue, newCashPercent, oldUsdtValue, position: analysisResult.data.position }; const settings = await loadSettings(); let privateMessage, publicMessage; if (analysisResult.type === 'buy') { privateMessage = formatPrivateBuy(baseDetails); publicMessage = formatPublicBuy(baseDetails); await bot.api.sendMessage(AUTHORIZED_USER_ID, privateMessage, { parse_mode: "Markdown" }); if (settings.autoPostToChannel) { await bot.api.sendMessage(process.env.TARGET_CHANNEL_ID, publicMessage, { parse_mode: "Markdown" }); } } else if (analysisResult.type === 'sell') { privateMessage = formatPrivateSell(baseDetails); publicMessage = formatPublicSell(baseDetails); await bot.api.sendMessage(AUTHORIZED_USER_ID, privateMessage, { parse_mode: "Markdown" }); if (settings.autoPostToChannel) { await bot.api.sendMessage(process.env.TARGET_CHANNEL_ID, publicMessage, { parse_mode: "Markdown" }); } } else if (analysisResult.type === 'close') { privateMessage = formatPrivateCloseReport(analysisResult.data); publicMessage = formatPublicClose(analysisResult.data); if (settings.autoPostToChannel) { await bot.api.sendMessage(process.env.TARGET_CHANNEL_ID, publicMessage, { parse_mode: "Markdown" }); await bot.api.sendMessage(AUTHORIZED_USER_ID, privateMessage, { parse_mode: "Markdown" }); } else { const confirmationKeyboard = new InlineKeyboard() .text("✅ نعم، انشر التقرير", "publish_report") .text("❌ لا، تجاهل", "ignore_report"); const hiddenMarker = `\n<report>${JSON.stringify(publicMessage)}</report>`; const confirmationMessage = `*تم إغلاق المركز بنجاح. هل تود نشر الملخص في القناة؟*\n\n${privateMessage}${hiddenMarker}`; await bot.api.sendMessage(AUTHORIZED_USER_ID, confirmationMessage, { parse_mode: "Markdown", reply_markup: confirmationKeyboard }); } } } if (stateNeedsUpdate) { await saveBalanceState({ balances: currentBalance, totalValue: newTotalValue }); await sendDebugMessage("State updated successfully after processing changes."); } else { await sendDebugMessage("No significant balance changes detected."); } } catch (e) { console.error("CRITICAL ERROR in monitorBalanceChanges:", e); await sendDebugMessage(`CRITICAL ERROR in monitorBalanceChanges: ${e.message}`); } }
 async function trackPositionHighLow() { try { const positions = await loadPositions(); if (Object.keys(positions).length === 0) return; const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) return; let positionsUpdated = false; for (const symbol in positions) { const position = positions[symbol]; const currentPrice = prices[`${symbol}-USDT`]?.price; if (currentPrice) { if (!position.highestPrice || currentPrice > position.highestPrice) { position.highestPrice = currentPrice; positionsUpdated = true; } if (!position.lowestPrice || currentPrice < position.lowestPrice) { position.lowestPrice = currentPrice; positionsUpdated = true; } } } if (positionsUpdated) { await savePositions(positions); await sendDebugMessage("Updated position high/low prices."); } } catch(e) { console.error("CRITICAL ERROR in trackPositionHighLow:", e); } }
 async function checkPriceAlerts() { try { const alerts = await loadAlerts(); if (alerts.length === 0) return; const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) return; const remainingAlerts = []; let triggered = false; for (const alert of alerts) { const currentPrice = prices[alert.instId]?.price; if (currentPrice === undefined) { remainingAlerts.push(alert); continue; } if ((alert.condition === '>' && currentPrice > alert.price) || (alert.condition === '<' && currentPrice < alert.price)) { await bot.api.sendMessage(AUTHORIZED_USER_ID, `🚨 *تنبيه سعر!* \`${alert.instId}\`\nالشرط: ${alert.condition} ${alert.price}\nالسعر الحالي: \`${currentPrice}\``, { parse_mode: "Markdown" }); triggered = true; } else { remainingAlerts.push(alert); } } if (triggered) await saveAlerts(remainingAlerts); } catch (error) { console.error("Error in checkPriceAlerts:", error); } }
+async function checkPriceMovements() { try { await sendDebugMessage("Checking price movements..."); const alertSettings = await loadAlertSettings(); const priceTracker = await loadPriceTracker(); const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) return; const { assets, total: currentTotalValue, error } = await okxAdapter.getPortfolio(prices); if (error || currentTotalValue === undefined) return; if (priceTracker.totalPortfolioValue === 0) { priceTracker.totalPortfolioValue = currentTotalValue; assets.forEach(a => { if (a.price) priceTracker.assets[a.asset] = a.price; }); await savePriceTracker(priceTracker); return; } let trackerUpdated = false; for (const asset of assets) { if (asset.asset === 'USDT' || !asset.price) continue; const lastPrice = priceTracker.assets[asset.asset]; if (lastPrice) { const changePercent = ((asset.price - lastPrice) / lastPrice) * 100; const threshold = alertSettings.overrides[asset.asset] || alertSettings.global; if (Math.abs(changePercent) >= threshold) { const movementText = changePercent > 0 ? 'صعود' : 'هبوط'; const message = `📈 *تنبيه حركة سعر لأصل!* \`${asset.asset}\`\n*الحركة:* ${movementText} بنسبة \`${formatNumber(changePercent)}%\`\n*السعر الحالي:* \`$${formatNumber(asset.price, 4)}\``; await bot.api.sendMessage(AUTHORIZED_USER_ID, message, { parse_mode: "Markdown" }); priceTracker.assets[asset.asset] = asset.price; trackerUpdated = true; } } else { priceTracker.assets[asset.asset] = asset.price; trackerUpdated = true; } } if (trackerUpdated) await savePriceTracker(priceTracker); } catch (e) { console.error("CRITICAL ERROR in checkPriceMovements:", e); } }
 async function runDailyJobs() { try { const settings = await loadSettings(); if (!settings.dailySummary) return; const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) return; const { total } = await okxAdapter.getPortfolio(prices); if (total === undefined) return; const history = await loadHistory(); const date = new Date().toISOString().slice(0, 10); const today = history.find(h => h.date === date); if (today) { today.total = total; } else { history.push({ date, total, time: Date.now() }); } if (history.length > 35) history.shift(); await saveHistory(history); console.log(`[Daily Summary Recorded]: ${date} - $${formatNumber(total)}`); } catch (e) { console.error("CRITICAL ERROR in runDailyJobs:", e); } }
 async function runHourlyJobs() { try { const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) return; const { total } = await okxAdapter.getPortfolio(prices); if (total === undefined) return; const history = await loadHourlyHistory(); const hourLabel = new Date().toISOString().slice(0, 13); const existingIndex = history.findIndex(h => h.label === hourLabel); if (existingIndex > -1) { history[existingIndex].total = total; } else { history.push({ label: hourLabel, total, time: Date.now() }); } if (history.length > 72) history.splice(0, history.length - 72); await saveHourlyHistory(history); } catch (e) { console.error("Error in hourly jobs:", e); } }
 async function monitorVirtualTrades() { const activeTrades = await getActiveVirtualTrades(); if (activeTrades.length === 0) return; const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) return; for (const trade of activeTrades) { const currentPrice = prices[trade.instId]?.price; if (!currentPrice) continue; let finalStatus = null; let pnl = 0; let finalPrice = 0; if (currentPrice >= trade.targetPrice) { finalPrice = trade.targetPrice; pnl = (finalPrice - trade.entryPrice) * (trade.virtualAmount / trade.entryPrice); finalStatus = 'completed'; const profitPercent = (trade.virtualAmount > 0) ? (pnl / trade.virtualAmount) * 100 : 0; const msg = `🎯 *الهدف تحقق (توصية افتراضية)!* ✅\n\n` + `*العملة:* \`${trade.instId}\`\n` + `*سعر الدخول:* \`$${formatNumber(trade.entryPrice, 4)}\`\n` + `*سعر الهدف:* \`$${formatNumber(trade.targetPrice, 4)}\`\n\n` + `💰 *الربح المحقق:* \`+$${formatNumber(pnl)}\` (\`+${formatNumber(profitPercent)}%\`)`; await bot.api.sendMessage(AUTHORIZED_USER_ID, msg, { parse_mode: "Markdown" }); } else if (currentPrice <= trade.stopLossPrice) { finalPrice = trade.stopLossPrice; pnl = (finalPrice - trade.entryPrice) * (trade.virtualAmount / trade.entryPrice); finalStatus = 'stopped'; const lossPercent = (trade.virtualAmount > 0) ? (pnl / trade.virtualAmount) * 100 : 0; const msg = `🛑 *تم تفعيل وقف الخسارة (توصية افتراضية)!* 🔻\n\n` + `*العملة:* \`${trade.instId}\`\n` + `*سعر الدخول:* \`$${formatNumber(trade.entryPrice, 4)}\`\n` + `*سعر الوقف:* \`$${formatNumber(trade.stopLossPrice, 4)}\`\n\n` + `💸 *الخسارة:* \`$${formatNumber(pnl)}\` (\`${formatNumber(lossPercent)}%\`)`; await bot.api.sendMessage(AUTHORIZED_USER_ID, msg, { parse_mode: "Markdown" }); } if (finalStatus) { await updateVirtualTradeStatus(trade._id, finalStatus, finalPrice); } } }
@@ -195,19 +278,13 @@ bot.on("callback_query:data", async (ctx) => {
     const data = ctx.callbackQuery.data;
     try {
         if (data === "ai_analyze_portfolio") {
-            try {
-                await ctx.editMessageText("🧠 جاري طلب تحليل المحفظة من الذكاء الاصطناعي...");
-                const prices = await okxAdapter.getMarketPrices();
-                if (!prices || prices.error) throw new Error("فشل جلب أسعار السوق.");
-                const capital = await loadCapital();
-                const { assets, total, error } = await okxAdapter.getPortfolio(prices);
-                if (error) throw new Error(`فشل جلب المحفظة: ${error}`);
-                const aiResponse = await getAIAnalysisForPortfolio(assets, total, capital);
-                await ctx.editMessageText(`*🧠 تحليل الذكاء الاصطناعي \\- المحفظة*\n\n${sanitizeMarkdownV2(aiResponse)}`, { parse_mode: "MarkdownV2" });
-            } catch (e) {
-                console.error("Error in ai_analyze_portfolio:", e);
-                await ctx.editMessageText(`❌ حدث خطأ أثناء تحليل المحفظة:\n\`${sanitizeMarkdownV2(e.message)}\``, { parse_mode: "MarkdownV2" });
-            }
+            await ctx.editMessageText("🧠 جاري طلب تحليل المحفظة من الذكاء الاصطناعي...");
+            const prices = await okxAdapter.getMarketPrices();
+            if (!prices || prices.error) return await ctx.editMessageText("❌ فشل جلب بيانات السوق.");
+            const capital = await loadCapital();
+            const { assets, total } = await okxAdapter.getPortfolio(prices);
+            const aiResponse = await getAIAnalysisForPortfolio(assets, total, capital);
+            await ctx.editMessageText(`*🧠 تحليل الذكاء الاصطناعي - المحفظة*\n\n${aiResponse}`, { parse_mode: "Markdown" });
             return;
         }
         if (data === "ai_analyze_coin") {
@@ -299,15 +376,10 @@ bot.on("message:text", async (ctx) => {
         waitingState = null;
         switch (state) {
             case 'ai_ask_coin':
-                try {
-                    const coin = text.toUpperCase();
-                    const loading = await ctx.reply(`🧠 جاري تحليل عملة ${coin} باستخدام الذكاء الاصطناعي...`);
-                    const aiResponse = await getAIAnalysisForAsset(coin);
-                    await ctx.api.editMessageText(loading.chat.id, loading.message_id, `*🧠 تحليل الذكاء الاصطناعي | ${coin}*\n\n${sanitizeMarkdownV2(aiResponse)}`, { parse_mode: "MarkdownV2" });
-                } catch (e) {
-                    console.error("Error in ai_ask_coin:", e);
-                    await ctx.reply(`❌ حدث خطأ فادح أثناء تحليل العملة:\n\`${sanitizeMarkdownV2(e.message)}\``, { parse_mode: "MarkdownV2" });
-                }
+                const coin = text.toUpperCase();
+                const loading = await ctx.reply(`🧠 جاري تحليل عملة ${coin} باستخدام الذكاء الاصطناعي...`);
+                const aiResponse = await getAIAnalysisForAsset(coin);
+                await ctx.api.editMessageText(loading.chat.id, loading.message_id, `*🧠 تحليل الذكاء الاصطناعي | ${coin}*\n\n${aiResponse}`, { parse_mode: "Markdown" });
                 return;
             case 'cumulative_analysis_asset': await generateAndSendCumulativeReport(ctx, text.toUpperCase()); return;
             case 'add_virtual_trade': try { const lines = text.split('\n').map(line => line.trim()); if (lines.length < 5) throw new Error("التنسيق غير صحيح، يجب أن يتكون من 5 أسطر."); const instId = lines[0].toUpperCase(); const entryPrice = parseFloat(lines[1]); const targetPrice = parseFloat(lines[2]); const stopLossPrice = parseFloat(lines[3]); const virtualAmount = parseFloat(lines[4]); if (!instId.endsWith('-USDT')) throw new Error("رمز العملة يجب أن ينتهي بـ -USDT."); if ([entryPrice, targetPrice, stopLossPrice, virtualAmount].some(isNaN)) { throw new Error("تأكد من أن جميع القيم المدخلة هي أرقام صالحة."); } if (entryPrice <= 0 || targetPrice <= 0 || stopLossPrice <= 0 || virtualAmount <= 0) { throw new Error("جميع القيم الرقمية يجب أن تكون أكبر من صفر."); } if (targetPrice <= entryPrice) throw new Error("سعر الهدف يجب أن يكون أعلى من سعر الدخول."); if (stopLossPrice >= entryPrice) throw new Error("سعر وقف الخسارة يجب أن يكون أقل من سعر الدخول."); const tradeData = { instId, entryPrice, targetPrice, stopLossPrice, virtualAmount, status: 'active', createdAt: new Date() }; await saveVirtualTrade(tradeData); await ctx.reply(`✅ *تمت إضافة التوصية الافتراضية بنجاح.*\n\nسيتم إعلامك عند تحقيق الهدف أو تفعيل وقف الخسارة.`, { parse_mode: "Markdown" }); } catch (e) { await ctx.reply(`❌ *خطأ في إضافة التوصية:*\n${e.message}\n\nالرجاء المحاولة مرة أخرى بالتنسيق الصحيح.`); } return;
@@ -328,16 +400,7 @@ bot.on("message:text", async (ctx) => {
         case "🔍 مراجعة الصفقات": const loadingMsgReview = await ctx.reply("⏳ جارٍ جلب أحدث 5 صفقات مغلقة..."); try { const closedTrades = await getCollection("tradeHistory").find({ quantity: { $exists: true } }).sort({ closedAt: -1 }).limit(5).toArray(); if (closedTrades.length === 0) { await ctx.api.editMessageText(loadingMsgReview.chat.id, loadingMsgReview.message_id, "ℹ️ لا يوجد سجل صفقات مغلقة (متوافقة) لمراجعتها."); return; } const keyboard = new InlineKeyboard(); closedTrades.forEach(trade => { keyboard.text( `${trade.asset} | أغلق بسعر $${formatNumber(trade.avgSellPrice, 4)}`, `review_trade_${trade._id}` ).row(); }); await ctx.api.editMessageText(loadingMsgReview.chat.id, loadingMsgReview.message_id, "👇 *اختر صفقة من القائمة أدناه لمراجعتها:*", { parse_mode: "Markdown", reply_markup: keyboard }); } catch (e) { console.error("Error in 'مراجعة الصفقات':", e); await ctx.api.editMessageText(loadingMsgReview.chat.id, loadingMsgReview.message_id, `❌ حدث خطأ: ${e.message}`); } break;
         case "💡 توصية افتراضية": await ctx.reply("اختر الإجراء المطلوب للتوصيات الافتراضية:", { reply_markup: virtualTradeKeyboard }); break;
         case "⚡ إحصائيات سريعة": const loadingMsgQuick = await ctx.reply("⏳ جاري حساب الإحصائيات..."); try { const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) throw new Error(prices.error || `فشل جلب أسعار السوق.`); const capital = await loadCapital(); const { assets, total, error } = await okxAdapter.getPortfolio(prices); if (error) throw new Error(error); const quickStatsMsg = await formatQuickStats(assets, total, capital); await ctx.api.editMessageText(loadingMsgQuick.chat.id, loadingMsgQuick.message_id, quickStatsMsg, { parse_mode: "Markdown" }); } catch (e) { console.error("Error in 'إحصائيات سريعة':", e); await ctx.api.editMessageText(loadingMsgQuick.chat.id, loadingMsgQuick.message_id, `❌ حدث خطأ: ${e.message}`); } break;
-        case "📈 أداء المحفظة":
-            try {
-                const loadingMsgPerf = await ctx.reply("اختر الفترة الزمنية لعرض تقرير الأداء:");
-                const performanceKeyboard = new InlineKeyboard().text("آخر 24 ساعة", "chart_24h").text("آخر 7 أيام", "chart_7d").text("آخر 30 يومًا", "chart_30d");
-                await ctx.api.editMessageText(loadingMsgPerf.chat.id, loadingMsgPerf.message_id, "اختر الفترة الزمنية لعرض تقرير الأداء:", { reply_markup: performanceKeyboard });
-            } catch (e) {
-                console.error("Error in 'أداء المحفظة':", e);
-                await ctx.reply(`❌ حدث خطأ: ${e.message}`);
-            }
-            break;
+        case "📈 أداء المحفظة": const performanceKeyboard = new InlineKeyboard().text("آخر 24 ساعة", "chart_24h").text("آخر 7 أيام", "chart_7d").text("آخر 30 يومًا", "chart_30d"); await ctx.reply("اختر الفترة الزمنية لعرض تقرير الأداء:", { reply_markup: performanceKeyboard }); break;
         case "📈 تحليل تراكمي": waitingState = 'cumulative_analysis_asset'; await ctx.reply("✍️ يرجى إرسال رمز العملة التي تود تحليلها (مثال: `BTC`)."); break;
         case "ℹ️ معلومات عملة": waitingState = 'coin_info'; await ctx.reply("✍️ يرجى إرسال رمز العملة (مثال: `BTC-USDT`)."); break;
         case "⚙️ الإعدادات": await sendSettingsMenu(ctx); break;
@@ -373,6 +436,7 @@ async function startBot() {
         setInterval(monitorBalanceChanges, 60 * 1000);
         setInterval(trackPositionHighLow, 60 * 1000);
         setInterval(checkPriceAlerts, 30 * 1000);
+        setInterval(checkPriceMovements, 60 * 1000);
         setInterval(monitorVirtualTrades, 30 * 1000);
         setInterval(runHourlyJobs, 60 * 60 * 1000);
         setInterval(runDailyJobs, 24 * 60 * 60 * 1000);
