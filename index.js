@@ -1,11 +1,11 @@
 // =================================================================
-// Advanced Analytics Bot - v136.1 (Grammy + AI Analysis Fixed)
+// Advanced Analytics Bot - v137.0 (Final Grammy + Gemini Version)
 // =================================================================
 const express = require("express");
 const { Bot, Keyboard, InlineKeyboard, webhookCallback } = require("grammy");
 const fetch = require("node-fetch");
 const crypto = require("crypto");
-const OpenAI = require("openai"); // FIXED: Updated OpenAI import
+const { GoogleGenerativeAI } = require("@google/generative-ai"); // Using Google Gemini
 require("dotenv").config();
 const { connectDB, getDB } = require("./database.js");
 
@@ -19,10 +19,9 @@ const AUTHORIZED_USER_ID = parseInt(process.env.AUTHORIZED_USER_ID);
 let waitingState = null;
 
 // --- AI Setup ---
-// FIXED: Updated OpenAI initialization to v4 syntax
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const geminiModel = genAI.getGenerativeModel({ model: "gemini-pro"});
+
 
 // =================================================================
 // SECTION 0: OKX API ADAPTER
@@ -146,20 +145,11 @@ function calculatePerformanceStats(history) { if (history.length < 2) return nul
 function createChartUrl(data, type = 'line', title = '', labels = [], dataLabel = '') { if (!data || data.length === 0) return null; const pnl = data[data.length - 1] - data[0]; const chartColor = pnl >= 0 ? 'rgb(75, 192, 75)' : 'rgb(255, 99, 132)'; const chartBgColor = pnl >= 0 ? 'rgba(75, 192, 75, 0.2)' : 'rgba(255, 99, 132, 0.2)'; const chartConfig = { type: 'line', data: { labels: labels, datasets: [{ label: dataLabel, data: data, fill: true, backgroundColor: chartBgColor, borderColor: chartColor, tension: 0.1 }] }, options: { title: { display: true, text: title } } }; return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&backgroundColor=white`; }
 
 // =================================================================
-// SECTION AI: SETUP & ANALYSIS (USING GOOGLE GEMINI)
+// SECTION 2.5: AI ANALYSIS (USING GOOGLE GEMINI)
 // =================================================================
-
-// NEW: Import Google Gemini
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-
-// NEW: AI Setup for Gemini
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-pro"});
-
-// FIXED: Rewritten for Google Gemini
 async function analyzeWithAI(prompt) {
     try {
-        const result = await model.generateContent(prompt);
+        const result = await geminiModel.generateContent(prompt);
         const response = await result.response;
         const text = response.text();
         return text.trim();
@@ -190,7 +180,7 @@ async function getAIAnalysisForAsset(asset) {
     - SMA50: $${tech.sma50 ? formatNumber(tech.sma50, 4) : 'N/A'}
     - عدد صفقاتي السابقة عليها: ${perf.tradeCount}
     - معدل نجاحي معها: ${perf.tradeCount > 0 ? formatNumber((perf.winningTrades / perf.tradeCount) * 100) : '0'}%
-
+    
     قدم تحليلًا موجزًا، توصية واضحة (شراء/بيع/مراقبة)، وسببك في فقرة واحدة بلغة عربية احترافية وسهلة.
     `;
 
@@ -206,16 +196,16 @@ async function getAIAnalysisForPortfolio(assets, total, capital) {
     - رأس المال الأصلي: $${formatNumber(capital)}
     - إجمالي الربح/الخسارة غير المحقق: ${formatNumber(pnlPercent)}%
     - أبرز 5 أصول في المحفظة: ${topAssets}
-
+    
     قدم تقييمًا لصحة المحفظة، درجة تنوعها، وأهم المخاطر أو الفرص التي تراها. ثم قدم توصية واحدة واضحة لتحسين أدائها.
     `;
 
     return await analyzeWithAI(prompt);
 }
+
 // =================================================================
 // SECTION 3: FORMATTING AND MESSAGE FUNCTIONS
 // =================================================================
-// ... (All format functions remain the same as your last correct version) ...
 function formatClosedTradeReview(trade, currentPrice) { const { asset, avgBuyPrice, avgSellPrice, quantity, pnl: actualPnl, pnlPercent: actualPnlPercent } = trade; let msg = `*🔍 مراجعة صفقة مغلقة | ${asset}*\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n`; msg += `*ملاحظة: هذا تحليل "ماذا لو" لصفقة مغلقة، ولا يؤثر على محفظتك الحالية.*\n\n`; msg += `*ملخص الأسعار الرئيسي:*\n`; msg += `  - 💵 *سعر الشراء الأصلي:* \`$${formatNumber(avgBuyPrice, 4)}\`\n`; msg += `  - ✅ *سعر الإغلاق الفعلي:* \`$${formatNumber(avgSellPrice, 4)}\`\n`; msg += `  - 📈 *السعر الحالي للسوق:* \`$${formatNumber(currentPrice, 4)}\`\n\n`; const actualPnlSign = actualPnl >= 0 ? '+' : ''; const actualEmoji = actualPnl >= 0 ? '🟢' : '🔴'; msg += `*الأداء الفعلي للصفقة (عند الإغلاق):*\n`; msg += `  - *النتيجة:* \`${actualPnlSign}$${formatNumber(actualPnl)}\` ${actualEmoji}\n`; msg += `  - *نسبة العائد:* \`${actualPnlSign}${formatNumber(actualPnlPercent)}%\`\n\n`; const hypotheticalPnl = (currentPrice - avgBuyPrice) * quantity; const hypotheticalPnlPercent = (avgBuyPrice > 0) ? (hypotheticalPnl / (avgBuyPrice * quantity)) * 100 : 0; const hypotheticalPnlSign = hypotheticalPnl >= 0 ? '+' : ''; const hypotheticalEmoji = hypotheticalPnl >= 0 ? '🟢' : '🔴'; msg += `*الأداء الافتراضي (لو بقيت الصفقة مفتوحة):*\n`; msg += `  - *النتيجة الحالية:* \`${hypotheticalPnlSign}$${formatNumber(hypotheticalPnl)}\` ${hypotheticalEmoji}\n`; msg += `  - *نسبة العائد الحالية:* \`${hypotheticalPnlSign}${formatNumber(hypotheticalPnlPercent)}%\`\n\n`; const priceChangeSinceClose = currentPrice - avgSellPrice; const priceChangePercent = (avgSellPrice > 0) ? (priceChangeSinceClose / avgSellPrice) * 100 : 0; const changeSign = priceChangeSinceClose >= 0 ? '⬆️' : '⬇️'; msg += `*تحليل قرار الخروج:*\n`; msg += `  - *حركة السعر منذ الإغلاق:* \`${formatNumber(priceChangePercent)}%\` ${changeSign}\n`; if (priceChangeSinceClose > 0) { msg += `  - *الخلاصة:* 📈 لقد واصل السعر الصعود بعد خروجك. كانت هناك فرصة لتحقيق ربح أكبر.\n`; } else { msg += `  - *الخلاصة:* ✅ لقد كان قرارك بالخروج صائبًا، حيث انخفض السعر بعد ذلك وتجنبت خسارة أو تراجع في الأرباح.\n`; } return msg; }
 function formatPrivateBuy(details) { const { asset, price, amountChange, tradeValue, oldTotalValue, newAssetWeight, newUsdtValue, newCashPercent } = details; const tradeSizePercent = oldTotalValue > 0 ? (tradeValue / oldTotalValue) * 100 : 0; let msg = `*مراقبة الأصول 🔬:*\n**عملية استحواذ جديدة 🟢**\n━━━━━━━━━━━━━━━━━━━━\n`; msg += `🔸 **الأصل المستهدف:** \`${asset}/USDT\`\n`; msg += `🔸 **نوع العملية:** تعزيز مركز / بناء مركز جديد\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n*تحليل الصفقة:*\n`; msg += ` ▪️ **سعر التنفيذ:** \`$${formatNumber(price, 4)}\`\n`; msg += ` ▪️ **الكمية المضافة:** \`${formatNumber(Math.abs(amountChange), 6)}\`\n`; msg += ` ▪️ **التكلفة الإجمالية للصفقة:** \`$${formatNumber(tradeValue)}\`\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n*التأثير على هيكل المحفظة:*\n`; msg += ` ▪️ **حجم الصفقة من إجمالي المحفظة:** \`${formatNumber(tradeSizePercent)}%\`\n`; msg += ` ▪️ **الوزن الجديد للأصل:** \`${formatNumber(newAssetWeight)}%\`\n`; msg += ` ▪️ **السيولة المتبقية (USDT):** \`$${formatNumber(newUsdtValue)}\`\n`; msg += ` ▪️ **مؤشر السيولة الحالي:** \`${formatNumber(newCashPercent)}%\`\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n*بتاريخ:* ${new Date().toLocaleString("ar-EG", { timeZone: "Africa/Cairo" })}`; return msg; }
 function formatPrivateSell(details) { const { asset, price, amountChange, tradeValue, oldTotalValue, newAssetWeight, newUsdtValue, newCashPercent } = details; const tradeSizePercent = oldTotalValue > 0 ? (tradeValue / oldTotalValue) * 100 : 0; let msg = `*مراقبة الأصول 🔬:*\n**مناورة تكتيكية 🟠**\n━━━━━━━━━━━━━━━━━━━━\n`; msg += `🔸 **الأصل المستهدف:** \`${asset}/USDT\`\n`; msg += `🔸 **نوع العملية:** تخفيف المركز / جني أرباح جزئي\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n*تحليل الصفقة:*\n`; msg += ` ▪️ **سعر التنفيذ:** \`$${formatNumber(price, 4)}\`\n`; msg += ` ▪️ **الكمية المخففة:** \`${formatNumber(Math.abs(amountChange), 6)}\`\n`; msg += ` ▪️ **العائد الإجمالي للصفقة:** \`$${formatNumber(tradeValue)}\`\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n*التأثير على هيكل المحفظة:*\n`; msg += ` ▪️ **حجم الصفقة من إجمالي المحفظة:** \`${formatNumber(tradeSizePercent)}%\`\n`; msg += ` ▪️ **الوزن الجديد للأصل:** \`${formatNumber(newAssetWeight)}%\`\n`; msg += ` ▪️ **السيولة الجديدة (USDT):** \`$${formatNumber(newUsdtValue)}\`\n`; msg += ` ▪️ **مؤشر السيولة الحالي:** \`${formatNumber(newCashPercent)}%\`\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n*بتاريخ:* ${new Date().toLocaleString("ar-EG", { timeZone: "Africa/Cairo" })}`; return msg; }
@@ -250,7 +240,7 @@ const mainKeyboard = new Keyboard()
     .text("📊 عرض المحفظة").text("📈 أداء المحفظة").row()
     .text("🚀 تحليل السوق").text("💡 توصية افتراضية").row()
     .text("⚡ إحصائيات سريعة").text("📈 تحليل تراكمي").row()
-    .text("🔍 مراجعة الصفقات").text("🧠 تحليل بالذكاء الاصطناعي").row() // NEW BUTTON
+    .text("🔍 مراجعة الصفقات").text("🧠 تحليل بالذكاء الاصطناعي").row()
     .text("🧮 حاسبة الربح والخسارة").text("⚙️ الإعدادات").row()
     .resized();
 const virtualTradeKeyboard = new InlineKeyboard().text("➕ إضافة توصية جديدة", "add_virtual_trade").row().text("📈 متابعة التوصيات الحية", "track_virtual_trades");
@@ -263,15 +253,14 @@ bot.command("settings", async (ctx) => { await sendSettingsMenu(ctx); });
 bot.command("pnl", async (ctx) => { const text = ctx.message.text || ''; const argsString = text.substring(text.indexOf(' ') + 1); const args = argsString.trim().split(/\s+/); if (args.length !== 3) { return await ctx.reply( `❌ *صيغة غير صحيحة.*\n*مثال:* \`/pnl <سعر الشراء> <سعر البيع> <الكمية>\`\n\n*مثلاً: /pnl 100 120 50*`, { parse_mode: "Markdown" } ); } const [buyPrice, sellPrice, quantity] = args.map(parseFloat); if (isNaN(buyPrice) || isNaN(sellPrice) || isNaN(quantity) || buyPrice <= 0 || sellPrice <= 0 || quantity <= 0) { return await ctx.reply("❌ *خطأ:* تأكد من أن جميع القيم هي أرقام موجبة وصحيحة."); } const investment = buyPrice * quantity; const saleValue = sellPrice * quantity; const pnl = saleValue - investment; const pnlPercent = (investment > 0) ? (pnl / investment) * 100 : 0; const status = pnl >= 0 ? "ربح ✅" : "خسارة 🔻"; const sign = pnl >= 0 ? '+' : ''; const msg = `🧮 *نتيجة حساب الربح والخسارة*\n\n` + ` ▪️ *إجمالي تكلفة الشراء:* \`$${formatNumber(investment)}\`\n` + ` ▪️ *إجمالي قيمة البيع:* \`$${formatNumber(saleValue)}\`\n` + `━━━━━━━━━━━━━━━━━━━━\n` + `*صافي الربح/الخسارة:* \`${sign}${formatNumber(pnl)}\` (\`${sign}${formatNumber(pnlPercent)}%\`)\n` + `**الحالة النهائية: ${status}**`; await ctx.reply(msg, { parse_mode: "Markdown" }); });
 
 // =================================================================
-// FIXED AND RESTORED MESSAGE AND CALLBACK HANDLERS
+// MESSAGE AND CALLBACK HANDLERS
 // =================================================================
 bot.on("callback_query:data", async (ctx) => {
     await ctx.answerCallbackQuery();
     const data = ctx.callbackQuery.data;
-
     try {
         if (data === "ai_analyze_portfolio") {
-            const msg = await ctx.editMessageText("🧠 جاري طلب تحليل المحفظة من الذكاء الاصطناعي...");
+            await ctx.editMessageText("🧠 جاري طلب تحليل المحفظة من الذكاء الاصطناعي...");
             const prices = await okxAdapter.getMarketPrices();
             if (!prices || prices.error) return await ctx.editMessageText("❌ فشل جلب بيانات السوق.");
             const capital = await loadCapital();
@@ -280,13 +269,11 @@ bot.on("callback_query:data", async (ctx) => {
             await ctx.editMessageText(`*🧠 تحليل الذكاء الاصطناعي - المحفظة*\n\n${aiResponse}`, { parse_mode: "Markdown" });
             return;
         }
-
         if (data === "ai_analyze_coin") {
             waitingState = "ai_ask_coin";
             await ctx.editMessageText("✍️ أرسل رمز العملة التي ترغب في تحليلها (مثل BTC).");
             return;
         }
-
         if (data.startsWith("review_trade_")) {
             const tradeId = data.split('_')[2];
             await ctx.editMessageText(`⏳ جاري تحليل صفقة \`${tradeId.substring(0, 8)}...\``);
@@ -305,7 +292,6 @@ bot.on("callback_query:data", async (ctx) => {
             await ctx.editMessageText(reviewMessage, { parse_mode: "Markdown" });
             return;
         }
-
         if (data.startsWith("chart_")) {
             const period = data.split('_')[1];
             await ctx.editMessageText("⏳ جاري إنشاء تقرير الأداء المتقدم...");
@@ -323,7 +309,6 @@ bot.on("callback_query:data", async (ctx) => {
             else { await ctx.replyWithPhoto(report.chartUrl, { caption: report.caption, parse_mode: "Markdown" }); await ctx.deleteMessage(); }
             return;
         }
-
         if (data === "publish_report" || data === "ignore_report") {
             const originalMessage = ctx.callbackQuery.message;
             if (!originalMessage) return;
@@ -347,7 +332,6 @@ bot.on("callback_query:data", async (ctx) => {
             }
             return;
         }
-
         switch(data) {
             case "add_virtual_trade": waitingState = 'add_virtual_trade'; await ctx.editMessageText("✍️ *لإضافة توصية افتراضية، أرسل التفاصيل في 5 أسطر منفصلة:*\n\n`BTC-USDT`\n`65000` (سعر الدخول)\n`70000` (سعر الهدف)\n`62000` (وقف الخسارة)\n`1000` (المبلغ الافتراضي)\n\n**ملاحظة:** *لا تكتب كلمات مثل 'دخول' أو 'هدف'، فقط الأرقام والرمز.*", { parse_mode: "Markdown" }); break;
             case "track_virtual_trades": await ctx.editMessageText("⏳ جاري جلب التوصيات النشطة..."); const activeTrades = await getActiveVirtualTrades(); if (activeTrades.length === 0) { await ctx.editMessageText("✅ لا توجد توصيات افتراضية نشطة حاليًا.", { reply_markup: virtualTradeKeyboard }); return; } const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) { await ctx.editMessageText(`❌ فشل جلب الأسعار، لا يمكن متابعة التوصيات.`, { reply_markup: virtualTradeKeyboard }); return; } let reportMsg = "📈 *متابعة حية للتوصيات النشطة:*\n" + "━━━━━━━━━━━━━━━━━━━━\n"; for (const trade of activeTrades) { const currentPrice = prices[trade.instId]?.price; if (!currentPrice) { reportMsg += `*${trade.instId}:* \`لا يمكن جلب السعر الحالي.\`\n`; } else { const pnl = (currentPrice - trade.entryPrice) * (trade.virtualAmount / trade.entryPrice); const pnlPercent = (trade.virtualAmount > 0) ? (pnl / trade.virtualAmount) * 100 : 0; const sign = pnl >= 0 ? '+' : ''; const emoji = pnl >= 0 ? '🟢' : '🔴'; reportMsg += `*${trade.instId}* ${emoji}\n` + ` ▫️ *الدخول:* \`$${formatNumber(trade.entryPrice, 4)}\`\n` + ` ▫️ *الحالي:* \`$${formatNumber(currentPrice, 4)}\`\n` + ` ▫️ *ربح/خسارة:* \`${sign}${formatNumber(pnl)}\` (\`${sign}${formatNumber(pnlPercent)}%\`)\n` + ` ▫️ *الهدف:* \`$${formatNumber(trade.targetPrice, 4)}\`\n` + ` ▫️ *الوقف:* \`$${formatNumber(trade.stopLossPrice, 4)}\`\n`; } reportMsg += "━━━━━━━━━━━━━━━━━━━━\n"; } await ctx.editMessageText(reportMsg, { parse_mode: "Markdown", reply_markup: virtualTradeKeyboard }); break;
@@ -371,7 +355,7 @@ bot.on("message:text", async (ctx) => {
 
     if (waitingState) {
         const state = waitingState;
-        waitingState = null; // Clear state immediately
+        waitingState = null;
         switch (state) {
             case 'ai_ask_coin':
                 const coin = text.toUpperCase();
@@ -379,7 +363,6 @@ bot.on("message:text", async (ctx) => {
                 const aiResponse = await getAIAnalysisForAsset(coin);
                 await ctx.api.editMessageText(loading.chat.id, loading.message_id, `*🧠 تحليل الذكاء الاصطناعي | ${coin}*\n\n${aiResponse}`, { parse_mode: "Markdown" });
                 return;
-            // RESTORED: All other waiting states
             case 'cumulative_analysis_asset': await generateAndSendCumulativeReport(ctx, text.toUpperCase()); return;
             case 'add_virtual_trade': try { const lines = text.split('\n').map(line => line.trim()); if (lines.length < 5) throw new Error("التنسيق غير صحيح، يجب أن يتكون من 5 أسطر."); const instId = lines[0].toUpperCase(); const entryPrice = parseFloat(lines[1]); const targetPrice = parseFloat(lines[2]); const stopLossPrice = parseFloat(lines[3]); const virtualAmount = parseFloat(lines[4]); if (!instId.endsWith('-USDT')) throw new Error("رمز العملة يجب أن ينتهي بـ -USDT."); if ([entryPrice, targetPrice, stopLossPrice, virtualAmount].some(isNaN)) { throw new Error("تأكد من أن جميع القيم المدخلة هي أرقام صالحة."); } if (entryPrice <= 0 || targetPrice <= 0 || stopLossPrice <= 0 || virtualAmount <= 0) { throw new Error("جميع القيم الرقمية يجب أن تكون أكبر من صفر."); } if (targetPrice <= entryPrice) throw new Error("سعر الهدف يجب أن يكون أعلى من سعر الدخول."); if (stopLossPrice >= entryPrice) throw new Error("سعر وقف الخسارة يجب أن يكون أقل من سعر الدخول."); const tradeData = { instId, entryPrice, targetPrice, stopLossPrice, virtualAmount, status: 'active', createdAt: new Date() }; await saveVirtualTrade(tradeData); await ctx.reply(`✅ *تمت إضافة التوصية الافتراضية بنجاح.*\n\nسيتم إعلامك عند تحقيق الهدف أو تفعيل وقف الخسارة.`, { parse_mode: "Markdown" }); } catch (e) { await ctx.reply(`❌ *خطأ في إضافة التوصية:*\n${e.message}\n\nالرجاء المحاولة مرة أخرى بالتنسيق الصحيح.`); } return;
             case 'set_capital': const amount = parseFloat(text); if (!isNaN(amount) && amount >= 0) { await saveCapital(amount); await ctx.reply(`✅ *تم تحديث رأس المال إلى:* \`$${formatNumber(amount)}\``, { parse_mode: "Markdown" }); } else { await ctx.reply("❌ مبلغ غير صالح."); } return;
@@ -390,11 +373,9 @@ bot.on("message:text", async (ctx) => {
             case 'set_alert': const parts_alert = text.trim().split(/\s+/); if (parts_alert.length !== 3) { await ctx.reply("❌ صيغة غير صحيحة. مثال: `BTC > 50000`"); return; } const [symbol, cond, priceStr] = parts_alert; if (cond !== '>' && cond !== '<') { await ctx.reply("❌ الشرط غير صالح. استخدم `>` أو `<`."); return; } const price = parseFloat(priceStr); if (isNaN(price) || price <= 0) { await ctx.reply("❌ السعر غير صالح."); return; } const allAlerts = await loadAlerts(); allAlerts.push({ instId: symbol.toUpperCase() + '-USDT', condition: cond, price: price }); await saveAlerts(allAlerts); await ctx.reply(`✅ تم ضبط التنبيه: ${symbol.toUpperCase()} ${cond} ${price}`, { parse_mode: "Markdown" }); return;
             case 'delete_alert_number': let currentAlerts = await loadAlerts(); const index = parseInt(text) - 1; if (isNaN(index) || index < 0 || index >= currentAlerts.length) { await ctx.reply("❌ رقم غير صالح."); return; } currentAlerts.splice(index, 1); await saveAlerts(currentAlerts); await ctx.reply(`✅ تم حذف التنبيه.`); return;
         }
-        return; // Important to exit after handling a state
     }
 
     switch (text) {
-        // RESTORED: All main menu button handlers
         case "🧠 تحليل بالذكاء الاصطناعي": const aiKeyboard = new InlineKeyboard().text("💼 تحليل المحفظة", "ai_analyze_portfolio").text("🪙 تحليل عملة", "ai_analyze_coin"); await ctx.reply("اختر نوع التحليل الذي تريده:", { reply_markup: aiKeyboard }); break;
         case "📊 عرض المحفظة": const loadingMsgPortfolio = await ctx.reply("⏳ جاري إعداد التقرير..."); try { const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) throw new Error(prices.error || `فشل جلب أسعار السوق.`); const capital = await loadCapital(); const { assets, total, error } = await okxAdapter.getPortfolio(prices); if (error) throw new Error(error); const { caption } = await formatPortfolioMsg(assets, total, capital); await ctx.api.editMessageText(loadingMsgPortfolio.chat.id, loadingMsgPortfolio.message_id, caption, { parse_mode: "Markdown" }); } catch (e) { console.error("Error in 'عرض المحفظة':", e); await ctx.api.editMessageText(loadingMsgPortfolio.chat.id, loadingMsgPortfolio.message_id, `❌ حدث خطأ: ${e.message}`); } break;
         case "🚀 تحليل السوق": const loadingMsgMarket = await ctx.reply("⏳ جاري تحليل السوق..."); try { const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) throw new Error(prices.error || `فشل جلب أسعار السوق.`); const { assets, error } = await okxAdapter.getPortfolio(prices); if (error) throw new Error(error); const marketMsg = await formatAdvancedMarketAnalysis(assets); await ctx.api.editMessageText(loadingMsgMarket.chat.id, loadingMsgMarket.message_id, marketMsg, { parse_mode: "Markdown" }); } catch (e) { console.error("Error in 'تحليل السوق':", e); await ctx.api.editMessageText(loadingMsgMarket.chat.id, loadingMsgMarket.message_id, `❌ حدث خطأ أثناء تحليل السوق: ${e.message}`); } break;
@@ -437,7 +418,7 @@ async function startBot() {
         setInterval(monitorBalanceChanges, 60 * 1000);
         setInterval(trackPositionHighLow, 60 * 1000);
         setInterval(checkPriceAlerts, 30 * 1000);
-        setInterval(checkPriceMovements, 60 * 1000); // This was commented out in your code, re-enabled it.
+        setInterval(checkPriceMovements, 60 * 1000);
         setInterval(monitorVirtualTrades, 30 * 1000);
         setInterval(runHourlyJobs, 60 * 60 * 1000);
         setInterval(runDailyJobs, 24 * 60 * 60 * 1000);
@@ -447,7 +428,7 @@ async function startBot() {
         await runHourlyJobs();
         await runDailyJobs();
         await monitorBalanceChanges();
-        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح*\nتم تفعيل المراقبة المتقدمة لمنصة OKX.", {parse_mode: "Markdown"}).catch(console.error);
+        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح*\n\nتم تفعيل المراقبة المتقدمة لمنصة OKX.", {parse_mode: "Markdown"}).catch(console.error);
 
     } catch (e) {
         console.error("FATAL: Could not start the bot.", e);
