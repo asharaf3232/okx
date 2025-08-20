@@ -645,4 +645,3 @@ async function startBot() {
 }
 
 startBot();
-�
