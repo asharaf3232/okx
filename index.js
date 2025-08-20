@@ -1,5 +1,5 @@
 // =================================================================
-// Advanced Analytics Bot - v137.0 (Final Grammy + Gemini Version)
+// Advanced Analytics Bot - v138.0 (News Summary + Gemini Version)
 // =================================================================
 const express = require("express");
 const { Bot, Keyboard, InlineKeyboard, webhookCallback } = require("grammy");
@@ -131,6 +131,17 @@ const loadPriceTracker = async () => await getConfig("priceTracker", { totalPort
 const savePriceTracker = (tracker) => saveConfig("priceTracker", tracker);
 function formatNumber(num, decimals = 2) { const number = parseFloat(num); if (isNaN(number) || !isFinite(number)) return (0).toFixed(decimals); return number.toFixed(decimals); }
 async function sendDebugMessage(message) { const settings = await loadSettings(); if (settings.debugMode) { try { await bot.api.sendMessage(AUTHORIZED_USER_ID, `🐞 *Debug (OKX):* ${message}`, { parse_mode: "Markdown" }); } catch (e) { console.error("Failed to send debug message:", e); } } }
+// --- NEW HELPER FUNCTION ---
+// This function is necessary to escape special characters for Telegram's MarkdownV2 format.
+function sanitizeMarkdownV2(text) {
+    if (!text) return '';
+    const charsToEscape = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!'];
+    let sanitizedText = text;
+    for (const char of charsToEscape) {
+        sanitizedText = sanitizedText.replace(new RegExp('\\' + char, 'g'), '\\' + char);
+    }
+    return sanitizedText;
+}
 
 // =================================================================
 // SECTION 2: DATA PROCESSING FUNCTIONS
@@ -148,7 +159,6 @@ function createChartUrl(data, type = 'line', title = '', labels = [], dataLabel 
 // =================================================================
 async function analyzeWithAI(prompt) {
     try {
-        // We combine the system instruction and the user prompt for better results.
         const fullPrompt = `
         أنت محلل مالي خبير ومستشار استثماري متخصص في العملات الرقمية، تتحدث بالعربية الفصحى، وتقدم تحليلات دقيقة وموجزة. في نهاية كل تحليل، يجب عليك إضافة السطر التالي بالضبط كما هو: "هذا التحليل لأغراض معلوماتية فقط وليس توصية مالية."
         
@@ -160,12 +170,11 @@ async function analyzeWithAI(prompt) {
         const result = await geminiModel.generateContent(fullPrompt);
         const response = await result.response;
 
-        // Check for safety blocks from Google
         if (response.promptFeedback?.blockReason) {
             console.error("AI Analysis Blocked:", response.promptFeedback.blockReason);
             return `❌ تم حظر التحليل من قبل Google لأسباب تتعلق بالسلامة: ${response.promptFeedback.blockReason}`;
         }
-        
+
         const text = response.text();
         return text.trim();
     } catch (error) {
@@ -182,7 +191,6 @@ async function getAIAnalysisForAsset(asset) {
         getHistoricalPerformance(asset)
     ]);
 
-    // Added more robust error checking
     if (details.error) return `لا يمكن تحليل ${asset}: ${details.error}`;
     if (tech.error) return `لا يمكن تحليل ${asset}: ${tech.error}`;
     if (!perf) return `لا يمكن تحليل ${asset}: فشل جلب الأداء التاريخي.`;
@@ -218,6 +226,71 @@ async function getAIAnalysisForPortfolio(assets, total, capital) {
     قدم تقييمًا لصحة المحفظة، درجة تنوعها، وأهم المخاطر أو الفرص التي تراها. ثم قدم توصية واحدة واضحة لتحسين أدائها.
     `;
 
+    return await analyzeWithAI(prompt);
+}
+
+// --- NEW FEATURE: AI News Summary ---
+
+async function getLatestCryptoNews(searchQuery) {
+    try {
+        const apiKey = process.env.NEWS_API_KEY;
+        if (!apiKey) throw new Error("NEWS_API_KEY is not configured.");
+        
+        const url = `https://newsapi.org/v2/everything?q=(${searchQuery})&sortBy=publishedAt&language=ar&pageSize=10&apiKey=${apiKey}`;
+        
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (data.status !== 'ok') {
+            throw new Error(`NewsAPI error: ${data.message}`);
+        }
+        
+        return data.articles.map(article => ({
+            title: article.title,
+            source: article.source.name,
+            publishedAt: new Date(article.publishedAt).toLocaleString('ar-EG', { timeZone: 'Africa/Cairo' }),
+            description: article.description
+        }));
+
+    } catch (error) {
+        console.error("Error fetching crypto news:", error);
+        return { error: error.message };
+    }
+}
+
+async function getAIGeneralNewsSummary() {
+    const newsArticles = await getLatestCryptoNews("crypto OR cryptocurrency OR bitcoin OR ethereum OR blockchain");
+    if (newsArticles.error) return `❌ فشل في جلب الأخبار: ${newsArticles.error}`;
+    if (newsArticles.length === 0) return "ℹ️ لم يتم العثور على أخبار حديثة عن الكريبتو حاليًا.";
+
+    const articlesForPrompt = newsArticles.map(a => `تاريخ: ${a.publishedAt}\nمصدر: ${a.source}\nعنوان: ${a.title}`).join('\n\n');
+    const prompt = `أنت محرر أخبار خبير. لخص أهم 3-4 أخبار من القائمة التالية وقدم فقرة قصيرة عن الشعور العام للسوق بناءً عليها.\n\nالأخبار:\n${articlesForPrompt}`;
+    return await analyzeWithAI(prompt);
+}
+
+async function getAIPortfolioNewsSummary() {
+    // 1. جلب المحفظة أولاً
+    const prices = await okxAdapter.getMarketPrices();
+    if (prices.error) throw new Error("فشل جلب أسعار السوق لتحليل أخبار المحفظة.");
+    const { assets, error } = await okxAdapter.getPortfolio(prices);
+    if (error) throw new Error("فشل جلب المحفظة لتحليل الأخبار.");
+
+    const cryptoAssets = assets.filter(a => a.asset !== "USDT");
+    if (cryptoAssets.length === 0) {
+        return "ℹ️ لا تحتوي محفظتك على عملات رقمية لجلب أخبار متعلقة بها.";
+    }
+
+    // 2. إنشاء نص البحث بناءً على أصول المحفظة
+    const assetSymbols = cryptoAssets.map(a => a.asset).join(' OR ');
+    
+    // 3. جلب الأخبار المخصصة
+    const newsArticles = await getLatestCryptoNews(assetSymbols);
+    if (newsArticles.error) return `❌ فشل في جلب الأخبار: ${newsArticles.error}`;
+    if (newsArticles.length === 0) return `ℹ️ لم يتم العثور على أخبار حديثة متعلقة بأصول محفظتك (${assetSymbols}).`;
+    
+    // 4. إرسالها للذكاء الاصطناعي للتلخيص
+    const articlesForPrompt = newsArticles.map(a => `تاريخ: ${a.publishedAt}\nمصدر: ${a.source}\nعنوان: ${a.title}`).join('\n\n');
+    const prompt = `أنت مستشار مالي شخصي. محفظتي تحتوي على العملات التالية: ${assetSymbols}. قم بتلخيص أهم الأخبار من القائمة أدناه التي قد تؤثر على استثماراتي، مع توضيح تأثير كل خبر بشكل مبسط.\n\nالأخبار:\n${articlesForPrompt}`;
     return await analyzeWithAI(prompt);
 }
 
@@ -277,6 +350,31 @@ bot.on("callback_query:data", async (ctx) => {
     await ctx.answerCallbackQuery();
     const data = ctx.callbackQuery.data;
     try {
+        // --- NEW: AI News Summary Handlers ---
+        if (data === "ai_get_general_news") {
+            try {
+                await ctx.editMessageText("📰 جاري جلب وتلخيص آخر الأخبار العامة...");
+                const summary = await getAIGeneralNewsSummary();
+                await ctx.editMessageText(`*📰 ملخص الأخبار العامة بالذكاء الاصطناعي*\n\n${sanitizeMarkdownV2(summary)}`, { parse_mode: "MarkdownV2" });
+            } catch (e) {
+                console.error("Error in ai_get_general_news:", e);
+                await ctx.editMessageText(`❌ حدث خطأ أثناء جلب الأخبار:\n\`${sanitizeMarkdownV2(e.message)}\``, { parse_mode: "MarkdownV2" });
+            }
+            return;
+        }
+
+        if (data === "ai_get_portfolio_news") {
+            try {
+                await ctx.editMessageText("📈 جاري جلب وتلخيص الأخبار المتعلقة بمحفظتك...");
+                const summary = await getAIPortfolioNewsSummary();
+                await ctx.editMessageText(`*📈 ملخص أخبار محفظتك بالذكاء الاصطناعي*\n\n${sanitizeMarkdownV2(summary)}`, { parse_mode: "MarkdownV2" });
+            } catch (e) {
+                console.error("Error in ai_get_portfolio_news:", e);
+                await ctx.editMessageText(`❌ حدث خطأ أثناء جلب أخبار محفظتك:\n\`${sanitizeMarkdownV2(e.message)}\``, { parse_mode: "MarkdownV2" });
+            }
+            return;
+        }
+        
         if (data === "ai_analyze_portfolio") {
             await ctx.editMessageText("🧠 جاري طلب تحليل المحفظة من الذكاء الاصطناعي...");
             const prices = await okxAdapter.getMarketPrices();
@@ -394,7 +492,15 @@ bot.on("message:text", async (ctx) => {
     }
 
     switch (text) {
-        case "🧠 تحليل بالذكاء الاصطناعي": const aiKeyboard = new InlineKeyboard().text("💼 تحليل المحفظة", "ai_analyze_portfolio").text("🪙 تحليل عملة", "ai_analyze_coin"); await ctx.reply("اختر نوع التحليل الذي تريده:", { reply_markup: aiKeyboard }); break;
+        case "🧠 تحليل بالذكاء الاصطناعي":
+            const aiKeyboard = new InlineKeyboard()
+                .text("💼 تحليل المحفظة", "ai_analyze_portfolio")
+                .text("🪙 تحليل عملة", "ai_analyze_coin")
+                .row()
+                .text("📰 أخبار عامة", "ai_get_general_news") 
+                .text("📈 أخبار محفظتي", "ai_get_portfolio_news"); 
+            await ctx.reply("اختر نوع التحليل الذي تريده:", { reply_markup: aiKeyboard });
+            break;
         case "📊 عرض المحفظة": const loadingMsgPortfolio = await ctx.reply("⏳ جاري إعداد التقرير..."); try { const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) throw new Error(prices.error || `فشل جلب أسعار السوق.`); const capital = await loadCapital(); const { assets, total, error } = await okxAdapter.getPortfolio(prices); if (error) throw new Error(error); const { caption } = await formatPortfolioMsg(assets, total, capital); await ctx.api.editMessageText(loadingMsgPortfolio.chat.id, loadingMsgPortfolio.message_id, caption, { parse_mode: "Markdown" }); } catch (e) { console.error("Error in 'عرض المحفظة':", e); await ctx.api.editMessageText(loadingMsgPortfolio.chat.id, loadingMsgPortfolio.message_id, `❌ حدث خطأ: ${e.message}`); } break;
         case "🚀 تحليل السوق": const loadingMsgMarket = await ctx.reply("⏳ جاري تحليل السوق..."); try { const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) throw new Error(prices.error || `فشل جلب أسعار السوق.`); const { assets, error } = await okxAdapter.getPortfolio(prices); if (error) throw new Error(error); const marketMsg = await formatAdvancedMarketAnalysis(assets); await ctx.api.editMessageText(loadingMsgMarket.chat.id, loadingMsgMarket.message_id, marketMsg, { parse_mode: "Markdown" }); } catch (e) { console.error("Error in 'تحليل السوق':", e); await ctx.api.editMessageText(loadingMsgMarket.chat.id, loadingMsgMarket.message_id, `❌ حدث خطأ أثناء تحليل السوق: ${e.message}`); } break;
         case "🔍 مراجعة الصفقات": const loadingMsgReview = await ctx.reply("⏳ جارٍ جلب أحدث 5 صفقات مغلقة..."); try { const closedTrades = await getCollection("tradeHistory").find({ quantity: { $exists: true } }).sort({ closedAt: -1 }).limit(5).toArray(); if (closedTrades.length === 0) { await ctx.api.editMessageText(loadingMsgReview.chat.id, loadingMsgReview.message_id, "ℹ️ لا يوجد سجل صفقات مغلقة (متوافقة) لمراجعتها."); return; } const keyboard = new InlineKeyboard(); closedTrades.forEach(trade => { keyboard.text( `${trade.asset} | أغلق بسعر $${formatNumber(trade.avgSellPrice, 4)}`, `review_trade_${trade._id}` ).row(); }); await ctx.api.editMessageText(loadingMsgReview.chat.id, loadingMsgReview.message_id, "👇 *اختر صفقة من القائمة أدناه لمراجعتها:*", { parse_mode: "Markdown", reply_markup: keyboard }); } catch (e) { console.error("Error in 'مراجعة الصفقات':", e); await ctx.api.editMessageText(loadingMsgReview.chat.id, loadingMsgReview.message_id, `❌ حدث خطأ: ${e.message}`); } break;
@@ -441,7 +547,7 @@ async function startBot() {
         setInterval(runHourlyJobs, 60 * 60 * 1000);
         setInterval(runDailyJobs, 24 * 60 * 60 * 1000);
         setInterval(runDailyReportJob, 24 * 60 * 60 * 1000);
-        
+
         // Run initial jobs once on startup
         await runHourlyJobs();
         await runDailyJobs();
@@ -455,3 +561,4 @@ async function startBot() {
 }
 
 startBot();
+
