@@ -146,28 +146,31 @@ function calculatePerformanceStats(history) { if (history.length < 2) return nul
 function createChartUrl(data, type = 'line', title = '', labels = [], dataLabel = '') { if (!data || data.length === 0) return null; const pnl = data[data.length - 1] - data[0]; const chartColor = pnl >= 0 ? 'rgb(75, 192, 75)' : 'rgb(255, 99, 132)'; const chartBgColor = pnl >= 0 ? 'rgba(75, 192, 75, 0.2)' : 'rgba(255, 99, 132, 0.2)'; const chartConfig = { type: 'line', data: { labels: labels, datasets: [{ label: dataLabel, data: data, fill: true, backgroundColor: chartBgColor, borderColor: chartColor, tension: 0.1 }] }, options: { title: { display: true, text: title } } }; return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&backgroundColor=white`; }
 
 // =================================================================
-// SECTION 2.5: AI ANALYSIS (IMPROVED & SAFER)
+// SECTION 4: DATA PROCESSING & AI ANALYSIS
 // =================================================================
+
+// --- Market Data Processing ---
+async function getInstrumentDetails(instId) { try { const tickerRes = await fetch(`${okxAdapter.baseURL}/api/v5/market/ticker?instId=${instId.toUpperCase()}`); const tickerJson = await tickerRes.json(); if (tickerJson.code !== '0' || !tickerJson.data || !tickerJson.data[0]) { return { error: `لم يتم العثور على العملة.` }; } const tickerData = tickerJson.data[0]; return { price: parseFloat(tickerData.last), high24h: parseFloat(tickerData.high24h), low24h: parseFloat(tickerData.low24h), vol24h: parseFloat(tickerData.volCcy24h), }; } catch (e) { throw new Error("خطأ في الاتصال بالمنصة لجلب بيانات السوق."); } }
+async function getHistoricalCandles(instId, bar = '1D', limit = 100) { let allCandles = []; let before = ''; const maxLimitPerRequest = 100; try { while (allCandles.length < limit) { const currentLimit = Math.min(maxLimitPerRequest, limit - allCandles.length); const url = `${okxAdapter.baseURL}/api/v5/market/history-candles?instId=${instId}&bar=${bar}&limit=${currentLimit}${before}`; const res = await fetch(url); const json = await res.json(); if (json.code !== '0' || !json.data || json.data.length === 0) { break; } const newCandles = json.data.map(c => ({ time: parseInt(c[0]), high: parseFloat(c[2]), low: parseFloat(c[3]), close: parseFloat(c[4]) })); allCandles.push(...newCandles); if (newCandles.length < maxLimitPerRequest) { break; } const lastTimestamp = newCandles[newCandles.length - 1].time; before = `&before=${lastTimestamp}`; } return allCandles.reverse(); } catch (e) { console.error(`Error fetching historical candles for ${instId}:`, e); return []; } }
+async function getAssetPriceExtremes(instId) { try { const [yearlyCandles, allTimeCandles] = await Promise.all([ getHistoricalCandles(instId, '1D', 365), getHistoricalCandles(instId, '1M', 240) ]); if (yearlyCandles.length === 0) return null; const getHighLow = (candles) => { if (!candles || candles.length === 0) return { high: 0, low: Infinity }; return candles.reduce((acc, candle) => ({ high: Math.max(acc.high, candle.high), low: Math.min(acc.low, candle.low) }), { high: 0, low: Infinity }); }; const weeklyCandles = yearlyCandles.slice(-7); const monthlyCandles = yearlyCandles.slice(-30); const formatLow = (low) => low === Infinity ? 0 : low; const weeklyExtremes = getHighLow(weeklyCandles); const monthlyExtremes = getHighLow(monthlyCandles); const yearlyExtremes = getHighLow(yearlyCandles); const allTimeExtremes = getHighLow(allTimeCandles); return { weekly: { high: weeklyExtremes.high, low: formatLow(weeklyExtremes.low) }, monthly: { high: monthlyExtremes.high, low: formatLow(monthlyExtremes.low) }, yearly: { high: yearlyExtremes.high, low: formatLow(yearlyExtremes.low) }, allTime: { high: allTimeExtremes.high, low: formatLow(allTimeExtremes.low) } }; } catch (error) { console.error(`Error in getAssetPriceExtremes for ${instId}:`, error); return null; } }
+function calculateSMA(closes, period) { if (closes.length < period) return null; const sum = closes.slice(-period).reduce((acc, val) => acc + val, 0); return sum / period; }
+function calculateRSI(closes, period = 14) { if (closes.length < period + 1) return null; let gains = 0, losses = 0; for (let i = 1; i <= period; i++) { const diff = closes[i] - closes[i - 1]; diff > 0 ? gains += diff : losses -= diff; } let avgGain = gains / period, avgLoss = losses / period; for (let i = period + 1; i < closes.length; i++) { const diff = closes[i] - closes[i - 1]; if (diff > 0) { avgGain = (avgGain * (period - 1) + diff) / period; avgLoss = (avgLoss * (period - 1)) / period; } else { avgLoss = (avgLoss * (period - 1) - diff) / period; avgGain = (avgGain * (period - 1)) / period; } } if (avgLoss === 0) return 100; const rs = avgGain / avgLoss; return 100 - (100 / (1 + rs)); }
+async function getTechnicalAnalysis(instId) { const candleData = (await getHistoricalCandles(instId, '1D', 51)); if (candleData.length < 51) return { error: "بيانات الشموع غير كافية." }; const closes = candleData.map(c => c.close); return { rsi: calculateRSI(closes, 14), sma20: calculateSMA(closes, 20), sma50: calculateSMA(closes, 50) }; }
+function calculatePerformanceStats(history) { if (history.length < 2) return null; const values = history.map(h => h.total); const startValue = values[0]; const endValue = values[values.length - 1]; const pnl = endValue - startValue; const pnlPercent = (startValue > 0) ? (pnl / startValue) * 100 : 0; const maxValue = Math.max(...values); const minValue = Math.min(...values); const avgValue = values.reduce((sum, val) => sum + val, 0) / values.length; const dailyReturns = []; for (let i = 1; i < values.length; i++) { dailyReturns.push((values[i] - values[i - 1]) / values[i - 1]); } const bestDayChange = dailyReturns.length > 0 ? Math.max(...dailyReturns) * 100 : 0; const worstDayChange = dailyReturns.length > 0 ? Math.min(...dailyReturns) * 100 : 0; const avgReturn = dailyReturns.length > 0 ? dailyReturns.reduce((sum, ret) => sum + ret, 0) / dailyReturns.length : 0; const volatility = dailyReturns.length > 0 ? Math.sqrt(dailyReturns.map(x => Math.pow(x - avgReturn, 2)).reduce((a, b) => a + b) / dailyReturns.length) * 100 : 0; let volText = "متوسط"; if(volatility < 1) volText = "منخفض"; if(volatility > 5) volText = "مرتفع"; return { startValue, endValue, pnl, pnlPercent, maxValue, minValue, avgValue, bestDayChange, worstDayChange, volatility, volText }; }
+function createChartUrl(data, type = 'line', title = '', labels = [], dataLabel = '') { if (!data || data.length === 0) return null; const pnl = data[data.length - 1] - data[0]; const chartColor = pnl >= 0 ? 'rgb(75, 192, 75)' : 'rgb(255, 99, 132)'; const chartBgColor = pnl >= 0 ? 'rgba(75, 192, 75, 0.2)' : 'rgba(255, 99, 132, 0.2)'; const chartConfig = { type: 'line', data: { labels: labels, datasets: [{ label: dataLabel, data: data, fill: true, backgroundColor: chartBgColor, borderColor: chartColor, tension: 0.1 }] }, options: { title: { display: true, text: title } } }; return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&backgroundColor=white`; }
+
+// --- AI Analysis Services ---
 async function analyzeWithAI(prompt) {
     try {
-        const fullPrompt = `
-        أنت محلل مالي خبير ومستشار استثماري متخصص في العملات الرقمية، تتحدث بالعربية الفصحى، وتقدم تحليلات دقيقة وموجزة. في نهاية كل تحليل، يجب عليك إضافة السطر التالي بالضبط كما هو: "هذا التحليل لأغراض معلوماتية فقط وليس توصية مالية."
-        
-        ---
-        
-        الطلب: ${prompt}
-        `;
-
+        // This base prompt sets the persona and adds the disclaimer.
+        const fullPrompt = `أنت محلل مالي خبير ومستشار استثماري متخصص في العملات الرقمية، تتحدث بالعربية الفصحى، وتقدم تحليلات دقيقة وموجزة. في نهاية كل تحليل، يجب عليك إضافة السطر التالي بالضبط كما هو: "هذا التحليل لأغراض معلوماتية فقط وليس توصية مالية."\n\n---\n\nالطلب: ${prompt}`;
         const result = await geminiModel.generateContent(fullPrompt);
         const response = await result.response;
-
         if (response.promptFeedback?.blockReason) {
             console.error("AI Analysis Blocked:", response.promptFeedback.blockReason);
             return `❌ تم حظر التحليل من قبل Google لأسباب تتعلق بالسلامة: ${response.promptFeedback.blockReason}`;
         }
-
-        const text = response.text();
-        return text.trim();
+        return response.text().trim();
     } catch (error) {
         console.error("AI Analysis Error (Gemini):", error);
         return "❌ تعذر إجراء التحليل بالذكاء الاصطناعي. قد يكون هناك مشكلة في الاتصال أو المفتاح السري.";
@@ -220,34 +223,36 @@ async function getAIAnalysisForPortfolio(assets, total, capital) {
     return await analyzeWithAI(prompt);
 }
 
-// --- IMPROVED: AI News Summary ---
-const CRYPTO_KEYWORDS = ["عملات رقمية", "كريبتو", "بلوك تشين", "بيتكوين", "إيثريوم", "binance", "coinbase", "okx", "bybit", "استثمار", "تداول", "رقمي", "لامركزية"];
-
+// --- News Service (IMPROVED) ---
 async function getLatestCryptoNews(searchQuery) {
     try {
         const apiKey = process.env.NEWS_API_KEY;
         if (!apiKey) throw new Error("NEWS_API_KEY is not configured.");
         
-        const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(searchQuery)}&sortBy=publishedAt&language=ar&pageSize=20&apiKey=${apiKey}`;
+        // Get today's date minus 3 days for the 'from' parameter for recent news
+        const fromDate = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+        // REMOVED '&language=ar' to get a wider range of news (mostly English).
+        // The AI will handle the translation and summarization in Arabic.
+        // CHANGED 'sortBy' to 'relevancy' to get more accurate articles.
+        const url = `https://newsapi.org/v2/everything?q=(${searchQuery})&sortBy=relevancy&from=${fromDate}&pageSize=10&apiKey=${apiKey}`;
         
         const res = await fetch(url);
         const data = await res.json();
 
         if (data.status !== 'ok') {
+            if (data.code === 'apiKeyInvalid' || data.code === 'apiKeyMissing') {
+                 throw new Error("مفتاح NewsAPI غير صالح أو مفقود. يرجى التحقق من إعداداتك.");
+            }
             throw new Error(`NewsAPI error: ${data.message}`);
         }
         
-        // --- NEW: Filter irrelevant articles ---
-        const relevantArticles = data.articles.filter(article => {
-            const content = `${article.title} ${article.description}`.toLowerCase();
-            return CRYPTO_KEYWORDS.some(keyword => content.includes(keyword));
-        });
-
-        return relevantArticles.slice(0, 10).map(article => ({ // Return max 10
+        // Return more data for the AI to process, including content.
+        return data.articles.map(article => ({
             title: article.title,
             source: article.source.name,
-            publishedAt: new Date(article.publishedAt).toLocaleString('ar-EG', { timeZone: 'Africa/Cairo' }),
-            description: article.description
+            content: article.content || article.description, // Prefer content over description for better summary
+            url: article.url
         }));
 
     } catch (error) {
@@ -257,32 +262,23 @@ async function getLatestCryptoNews(searchQuery) {
 }
 
 async function getAIGeneralNewsSummary() {
-    const searchQuery = `"عملات رقمية" OR "كريبتو" OR "بيتكوين" OR "بلوك تشين"`;
-    const newsArticles = await getLatestCryptoNews(searchQuery);
+    const newsArticles = await getLatestCryptoNews("crypto OR cryptocurrency OR bitcoin OR ethereum OR blockchain");
     if (newsArticles.error) return `❌ فشل في جلب الأخبار: ${newsArticles.error}`;
-    if (newsArticles.length === 0) return "ℹ️ لم يتم العثور على أخبار حديثة وموثوقة عن الكريبتو حاليًا.";
+    if (newsArticles.length === 0) return "ℹ️ لم يتم العثور على أخبار حديثة عن الكريبتو حاليًا.";
 
-    const articlesForPrompt = newsArticles.map(a => `تاريخ: ${a.publishedAt}\nمصدر: ${a.source}\nعنوان: ${a.title}\n---\n`).join('\n');
-    const prompt = `أنت محرر أخبار خبير. أمامك قائمة بأحدث الأخبار المتعلقة بالعملات الرقمية. تجاهل أي أخبار غير مرتبطة بشكل واضح بالأسواق المالية أو الكريبتو.
-    مهمتك هي:
-    1.  لخص أهم 3-4 أخبار مؤثرة في السوق.
-    2.  قدم فقرة قصيرة في النهاية تلخص الشعور العام للسوق (إيجابي، سلبي، محايد) بناءً على هذه الأخبار فقط.
+    // The articles are now likely in English, so we need to instruct the AI accordingly.
+    const articlesForPrompt = newsArticles.map(a => `Source: ${a.source}\nTitle: ${a.title}\nContent: ${a.content}`).join('\n\n---\n\n');
     
-    الأخبار:\n${articlesForPrompt}`;
+    // New, more detailed prompt for the AI
+    const prompt = `You are an expert news editor. The following is a list of recent news articles, likely in English. Your task is to:
+1. Identify the 3-4 most important news items related to the cryptocurrency market.
+2. Summarize them concisely in PROFESSIONAL ARABIC.
+3. Based on these summaries, write a short paragraph in ARABIC about the general market sentiment (e.g., bullish, bearish, uncertain).
+
+News Articles:\n${articlesForPrompt}`;
+
     return await analyzeWithAI(prompt);
 }
-
-const assetNameMapping = {
-    'BTC': 'Bitcoin', 'ETH': 'Ethereum', 'SOL': 'Solana', 'XRP': 'XRP', 'DOGE': 'Dogecoin',
-    'ADA': 'Cardano', 'AVAX': 'Avalanche', 'SHIB': 'Shiba Inu', 'DOT': 'Polkadot', 'LINK': 'Chainlink',
-    'TRX': 'TRON', 'MATIC': 'Polygon', 'LTC': 'Litecoin', 'BCH': 'Bitcoin Cash', 'ICP': 'Internet Computer',
-    'NEAR': 'NEAR Protocol', 'UNI': 'Uniswap', 'LEO': 'UNUS SED LEO', 'XLM': 'Stellar', 'OKB': 'OKB',
-    'INJ': 'Injective', 'ETC': 'Ethereum Classic', 'HBAR': 'Hedera', 'FIL': 'Filecoin', 'CRO': 'Cronos',
-    'APT': 'Aptos', 'IMX': 'Immutable', 'VET': 'VeChain', 'MKR': 'Maker', 'GRT': 'The Graph',
-    'RNDR': 'Render', 'OP': 'Optimism', 'AAVE': 'Aave', 'ALGO': 'Algorand', 'EGLD': 'MultiversX',
-    'STX': 'Stacks', 'SAND': 'The Sandbox', 'MANA': 'Decentraland', 'AXS': 'Axie Infinity',
-    'THETA': 'Theta Network', 'XTZ': 'Tezos', 'ARB': 'Arbitrum'
-};
 
 async function getAIPortfolioNewsSummary() {
     const prices = await okxAdapter.getMarketPrices();
@@ -295,21 +291,23 @@ async function getAIPortfolioNewsSummary() {
         return "ℹ️ لا تحتوي محفظتك على عملات رقمية لجلب أخبار متعلقة بها.";
     }
 
-    const assetSearchTerms = cryptoAssets.map(a => assetNameMapping[a.asset] || a.asset);
-    const searchQuery = assetSearchTerms.join(' OR ');
+    // Make the search query more specific to get relevant news
+    const assetSymbols = cryptoAssets.map(a => `"${a.asset} crypto"`).join(' OR '); 
     
-    const newsArticles = await getLatestCryptoNews(searchQuery);
+    const newsArticles = await getLatestCryptoNews(assetSymbols);
     if (newsArticles.error) return `❌ فشل في جلب الأخبار: ${newsArticles.error}`;
-    if (newsArticles.length === 0) return `ℹ️ لم يتم العثور على أخبار حديثة متعلقة بأصول محفظتك (${cryptoAssets.map(a=>a.asset).join(', ')}).`;
+    if (newsArticles.length === 0) return `ℹ️ لم يتم العثور على أخبار حديثة متعلقة بأصول محفظتك (${assetSymbols.replace(/"/g, '').replace(/ crypto/g, '')}).`;
     
-    const articlesForPrompt = newsArticles.map(a => `تاريخ: ${a.publishedAt}\nمصدر: ${a.source}\nعنوان: ${a.title}\n---\n`).join('\n');
-    const prompt = `أنت مستشار مالي شخصي. محفظتي تحتوي على العملات التالية: ${assetSearchTerms.join(', ')}.
-    مهمتك هي:
-    1.  اقرأ الأخبار التالية.
-    2.  لخص فقط الأخبار التي لها تأثير مباشر أو محتمل على العملات التي أملكها.
-    3.  وضح التأثير المتوقع لكل خبر بشكل مبسط (إيجابي/سلبي/محايد).
+    const articlesForPrompt = newsArticles.map(a => `Source: ${a.source}\nTitle: ${a.title}\nContent: ${a.content}`).join('\n\n---\n\n');
     
-    الأخبار:\n${articlesForPrompt}`;
+    // New, more detailed prompt for the AI
+    const prompt = `You are a personal financial advisor. My portfolio contains the following assets: ${assetSymbols}. Below is a list of recent news articles, likely in English. Your task is to:
+1. Summarize the most important news from the list that could affect my investments.
+2. Explain the potential impact of each news item simply.
+3. All your output MUST be in PROFESSIONAL ARABIC.
+
+News Articles:\n${articlesForPrompt}`;
+
     return await analyzeWithAI(prompt);
 }
 
