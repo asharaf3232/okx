@@ -1,11 +1,12 @@
 // =================================================================
-// Advanced Analytics Bot - v139.5 (Final Markdown & Feature Fix)
+// Advanced Analytics Bot - v141.0 (WebSocket Real-time Monitoring)
 // =================================================================
 // --- IMPORTS ---
 const express = require("express");
 const { Bot, Keyboard, InlineKeyboard, webhookCallback } = require("grammy");
 const fetch = require("node-fetch");
 const crypto = require("crypto");
+const WebSocket = require('ws'); // <-- المكتبة الجديدة للاتصال اللحظي
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 require("dotenv").config();
 const { connectDB, getDB } = require("./database.js");
@@ -21,7 +22,7 @@ const NEWS_API_KEY = process.env.NEWS_API_KEY;
 const OKX_CONFIG = {
     apiKey: process.env.OKX_API_KEY,
     apiSecret: process.env.OKX_API_SECRET_KEY,
-    passphrase: process.env.OKX_API_PASSPHRASE,
+    passphrase: process.env.OKX_API_PASSPHRAS_E,
 };
 const PORT = process.env.PORT || 3000;
 const AUTHORIZED_USER_ID = parseInt(process.env.AUTHORIZED_USER_ID);
@@ -180,7 +181,7 @@ const savePriceTracker = (tracker) => saveConfig("priceTracker", tracker);
 
 // --- Utility Functions ---
 const formatNumber = (num, decimals = 2) => { const number = parseFloat(num); return isNaN(number) || !isFinite(number) ? (0).toFixed(decimals) : number.toFixed(decimals); };
-const sendDebugMessage = async (message) => { const settings = await loadSettings(); if (settings.debugMode) { try { await bot.api.sendMessage(AUTHORIZED_USER_ID, `� *Debug (OKX):* ${message}`, { parse_mode: "Markdown" }); } catch (e) { console.error("Failed to send debug message:", e); } } };
+const sendDebugMessage = async (message) => { const settings = await loadSettings(); if (settings.debugMode) { try { await bot.api.sendMessage(AUTHORIZED_USER_ID, `🐞 *Debug (OKX):* ${message}`, { parse_mode: "Markdown" }); } catch (e) { console.error("Failed to send debug message:", e); } } };
 const sanitizeMarkdownV2 = (text) => { if (!text) return ''; const charsToEscape = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']; let sanitizedText = text; for (const char of charsToEscape) { sanitizedText = sanitizedText.replace(new RegExp('\\' + char, 'g'), '\\' + char); } return sanitizedText; };
 
 // =================================================================
@@ -369,10 +370,9 @@ News Articles:\n${articlesForPrompt}`;
 // SECTION 5: BACKGROUND JOBS & DYNAMIC MANAGEMENT
 // =================================================================
 async function updatePositionAndAnalyze(asset, amountChange, price, newTotalAmount, oldTotalValue) { if (!asset || price === undefined || price === null || isNaN(price)) return { analysisResult: null }; const positions = await loadPositions(); let position = positions[asset]; let analysisResult = { type: 'none', data: {} }; if (amountChange > 0) { const tradeValue = amountChange * price; const entryCapitalPercent = oldTotalValue > 0 ? (tradeValue / oldTotalValue) * 100 : 0; if (!position) { positions[asset] = { totalAmountBought: amountChange, totalCost: tradeValue, avgBuyPrice: price, openDate: new Date().toISOString(), totalAmountSold: 0, realizedValue: 0, highestPrice: price, lowestPrice: price, entryCapitalPercent: entryCapitalPercent, }; position = positions[asset]; } else { position.totalAmountBought += amountChange; position.totalCost += tradeValue; position.avgBuyPrice = position.totalCost / position.totalAmountBought; if (price > position.highestPrice) position.highestPrice = price; if (price < position.lowestPrice) position.lowestPrice = price; } analysisResult.type = 'buy'; } else if (amountChange < 0 && position) { const soldAmount = Math.abs(amountChange); position.realizedValue = (position.realizedValue || 0) + (soldAmount * price); position.totalAmountSold = (position.totalAmountSold || 0) + soldAmount; if (newTotalAmount * price < 1) { const closedQuantity = position.totalAmountBought; const investedCapital = position.avgBuyPrice * closedQuantity; const realizedValue = position.realizedValue; const finalPnl = realizedValue - investedCapital; const finalPnlPercent = investedCapital > 0 ? (finalPnl / investedCapital) * 100 : 0; const closeDate = new Date(); const openDate = new Date(position.openDate); const durationDays = (closeDate.getTime() - openDate.getTime()) / (1000 * 60 * 60 * 24); const avgSellPrice = position.totalAmountSold > 0 ? position.realizedValue / position.totalAmountSold : 0; const closeReportData = { asset, pnl: finalPnl, pnlPercent: finalPnlPercent, durationDays, avgBuyPrice: position.avgBuyPrice, avgSellPrice, highestPrice: position.highestPrice, lowestPrice: position.lowestPrice, entryCapitalPercent: position.entryCapitalPercent, exitQuantityPercent: 100, quantity: closedQuantity }; await saveClosedTrade(closeReportData); analysisResult = { type: 'close', data: closeReportData }; delete positions[asset]; } else { analysisResult.type = 'sell'; } } await savePositions(positions); analysisResult.data.position = positions[asset] || position; return { analysisResult }; }
-async function monitorBalanceChanges() { try { await sendDebugMessage("Checking balance changes..."); const previousState = await loadBalanceState(); const previousBalances = previousState.balances || {}; const currentBalance = await okxAdapter.getBalanceForComparison(); if (!currentBalance) { await sendDebugMessage("Could not fetch current balance to compare."); return; } const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) { await sendDebugMessage("Could not fetch market prices to compare."); return; } const { assets: newAssets, total: newTotalValue, usdtValue: newUsdtValue, error } = await okxAdapter.getPortfolio(prices); if (error || newTotalValue === undefined) { await sendDebugMessage(`Portfolio fetch error: ${error}`); return; } if (Object.keys(previousBalances).length === 0) { await sendDebugMessage("Initializing first balance state. No notifications will be sent."); await saveBalanceState({ balances: currentBalance, totalValue: newTotalValue }); return; } const oldTotalValue = previousState.totalValue || 0; let stateNeedsUpdate = false; const allAssets = new Set([...Object.keys(previousBalances), ...Object.keys(currentBalance)]); for (const asset of allAssets) { if (asset === 'USDT') continue; const prevAmount = previousBalances[asset] || 0; const currAmount = currentBalance[asset] || 0; const difference = currAmount - prevAmount; const priceData = prices[`${asset}-USDT`]; if (!priceData || !priceData.price || isNaN(priceData.price) || Math.abs(difference * priceData.price) < 1) { continue; } stateNeedsUpdate = true; await sendDebugMessage(`Detected change for ${asset}: ${difference}`); const { analysisResult } = await updatePositionAndAnalyze(asset, difference, priceData.price, currAmount, oldTotalValue); if (analysisResult.type === 'none') continue; const tradeValue = Math.abs(difference) * priceData.price; const newAssetData = newAssets.find(a => a.asset === asset); const newAssetValue = newAssetData ? newAssetData.value : 0; const newAssetWeight = newTotalValue > 0 ? (newAssetValue / newTotalValue) * 100 : 0; const newCashPercent = newTotalValue > 0 ? (newUsdtValue / newTotalValue) * 100 : 0; const oldUsdtValue = previousBalances['USDT'] || 0; const baseDetails = { asset, price: priceData.price, amountChange: difference, tradeValue, oldTotalValue, newAssetWeight, newUsdtValue, newCashPercent, oldUsdtValue, position: analysisResult.data.position }; const settings = await loadSettings(); let privateMessage, publicMessage; if (analysisResult.type === 'buy') { privateMessage = formatPrivateBuy(baseDetails); publicMessage = formatPublicBuy(baseDetails); await bot.api.sendMessage(AUTHORIZED_USER_ID, privateMessage, { parse_mode: "Markdown" }); if (settings.autoPostToChannel) { await bot.api.sendMessage(process.env.TARGET_CHANNEL_ID, publicMessage, { parse_mode: "Markdown" }); } } else if (analysisResult.type === 'sell') { privateMessage = formatPrivateSell(baseDetails); publicMessage = formatPublicSell(baseDetails); await bot.api.sendMessage(AUTHORIZED_USER_ID, privateMessage, { parse_mode: "Markdown" }); if (settings.autoPostToChannel) { await bot.api.sendMessage(process.env.TARGET_CHANNEL_ID, publicMessage, { parse_mode: "Markdown" }); } } else if (analysisResult.type === 'close') { privateMessage = formatPrivateCloseReport(analysisResult.data); publicMessage = formatPublicClose(analysisResult.data); if (settings.autoPostToChannel) { await bot.api.sendMessage(process.env.TARGET_CHANNEL_ID, publicMessage, { parse_mode: "Markdown" }); await bot.api.sendMessage(AUTHORIZED_USER_ID, privateMessage, { parse_mode: "Markdown" }); } else { const confirmationKeyboard = new InlineKeyboard() .text("✅ نعم، انشر التقرير", "publish_report") .text("❌ لا، تجاهل", "ignore_report"); const hiddenMarker = `\n<report>${JSON.stringify(publicMessage)}</report>`; const confirmationMessage = `*تم إغلاق المركز بنجاح. هل تود نشر الملخص في القناة؟*\n\n${privateMessage}${hiddenMarker}`; await bot.api.sendMessage(AUTHORIZED_USER_ID, confirmationMessage, { parse_mode: "Markdown", reply_markup: confirmationKeyboard }); } } } if (stateNeedsUpdate) { await saveBalanceState({ balances: currentBalance, totalValue: newTotalValue }); await sendDebugMessage("State updated successfully after processing changes."); } else { await sendDebugMessage("No significant balance changes detected."); } } catch (e) { console.error("CRITICAL ERROR in monitorBalanceChanges:", e); await sendDebugMessage(`CRITICAL ERROR in monitorBalanceChanges: ${e.message}`); } }
+async function checkAndProcessBalanceChanges() { try { await sendDebugMessage("Checking balance changes..."); const previousState = await loadBalanceState(); const previousBalances = previousState.balances || {}; const currentBalance = await okxAdapter.getBalanceForComparison(); if (!currentBalance) { await sendDebugMessage("Could not fetch current balance to compare."); return; } const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) { await sendDebugMessage("Could not fetch market prices to compare."); return; } const { assets: newAssets, total: newTotalValue, usdtValue: newUsdtValue, error } = await okxAdapter.getPortfolio(prices); if (error || newTotalValue === undefined) { await sendDebugMessage(`Portfolio fetch error: ${error}`); return; } if (Object.keys(previousBalances).length === 0) { await sendDebugMessage("Initializing first balance state. No notifications will be sent."); await saveBalanceState({ balances: currentBalance, totalValue: newTotalValue }); return; } const oldTotalValue = previousState.totalValue || 0; let stateNeedsUpdate = false; const allAssets = new Set([...Object.keys(previousBalances), ...Object.keys(currentBalance)]); for (const asset of allAssets) { if (asset === 'USDT') continue; const prevAmount = previousBalances[asset] || 0; const currAmount = currentBalance[asset] || 0; const difference = currAmount - prevAmount; const priceData = prices[`${asset}-USDT`]; if (!priceData || !priceData.price || isNaN(priceData.price) || Math.abs(difference * priceData.price) < 1) { continue; } stateNeedsUpdate = true; await sendDebugMessage(`Detected change for ${asset}: ${difference}`); const { analysisResult } = await updatePositionAndAnalyze(asset, difference, priceData.price, currAmount, oldTotalValue); if (analysisResult.type === 'none') continue; const tradeValue = Math.abs(difference) * priceData.price; const newAssetData = newAssets.find(a => a.asset === asset); const newAssetValue = newAssetData ? newAssetData.value : 0; const newAssetWeight = newTotalValue > 0 ? (newAssetValue / newTotalValue) * 100 : 0; const newCashPercent = newTotalValue > 0 ? (newUsdtValue / newTotalValue) * 100 : 0; const oldUsdtValue = previousBalances['USDT'] || 0; const baseDetails = { asset, price: priceData.price, amountChange: difference, tradeValue, oldTotalValue, newAssetWeight, newUsdtValue, newCashPercent, oldUsdtValue, position: analysisResult.data.position }; const settings = await loadSettings(); let privateMessage, publicMessage; if (analysisResult.type === 'buy') { privateMessage = formatPrivateBuy(baseDetails); publicMessage = formatPublicBuy(baseDetails); await bot.api.sendMessage(AUTHORIZED_USER_ID, privateMessage, { parse_mode: "Markdown" }); if (settings.autoPostToChannel) { await bot.api.sendMessage(process.env.TARGET_CHANNEL_ID, publicMessage, { parse_mode: "Markdown" }); } } else if (analysisResult.type === 'sell') { privateMessage = formatPrivateSell(baseDetails); publicMessage = formatPublicSell(baseDetails); await bot.api.sendMessage(AUTHORIZED_USER_ID, privateMessage, { parse_mode: "Markdown" }); if (settings.autoPostToChannel) { await bot.api.sendMessage(process.env.TARGET_CHANNEL_ID, publicMessage, { parse_mode: "Markdown" }); } } else if (analysisResult.type === 'close') { privateMessage = formatPrivateCloseReport(analysisResult.data); publicMessage = formatPublicClose(analysisResult.data); if (settings.autoPostToChannel) { await bot.api.sendMessage(process.env.TARGET_CHANNEL_ID, publicMessage, { parse_mode: "Markdown" }); await bot.api.sendMessage(AUTHORIZED_USER_ID, privateMessage, { parse_mode: "Markdown" }); } else { const confirmationKeyboard = new InlineKeyboard() .text("✅ نعم، انشر التقرير", "publish_report") .text("❌ لا، تجاهل", "ignore_report"); const hiddenMarker = `\n<report>${JSON.stringify(publicMessage)}</report>`; const confirmationMessage = `*تم إغلاق المركز بنجاح. هل تود نشر الملخص في القناة؟*\n\n${privateMessage}${hiddenMarker}`; await bot.api.sendMessage(AUTHORIZED_USER_ID, confirmationMessage, { parse_mode: "Markdown", reply_markup: confirmationKeyboard }); } } } if (stateNeedsUpdate) { await saveBalanceState({ balances: currentBalance, totalValue: newTotalValue }); await sendDebugMessage("State updated successfully after processing changes."); } else { await sendDebugMessage("No significant balance changes detected."); } } catch (e) { console.error("CRITICAL ERROR in checkAndProcessBalanceChanges:", e); await sendDebugMessage(`CRITICAL ERROR in checkAndProcessBalanceChanges: ${e.message}`); } }
 async function trackPositionHighLow() { try { const positions = await loadPositions(); if (Object.keys(positions).length === 0) return; const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) return; let positionsUpdated = false; for (const symbol in positions) { const position = positions[symbol]; const currentPrice = prices[`${symbol}-USDT`]?.price; if (currentPrice) { if (!position.highestPrice || currentPrice > position.highestPrice) { position.highestPrice = currentPrice; positionsUpdated = true; } if (!position.lowestPrice || currentPrice < position.lowestPrice) { position.lowestPrice = currentPrice; positionsUpdated = true; } } } if (positionsUpdated) { await savePositions(positions); await sendDebugMessage("Updated position high/low prices."); } } catch(e) { console.error("CRITICAL ERROR in trackPositionHighLow:", e); } }
 async function checkPriceAlerts() { try { const alerts = await loadAlerts(); if (alerts.length === 0) return; const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) return; const remainingAlerts = []; let triggered = false; for (const alert of alerts) { const currentPrice = prices[alert.instId]?.price; if (currentPrice === undefined) { remainingAlerts.push(alert); continue; } if ((alert.condition === '>' && currentPrice > alert.price) || (alert.condition === '<' && currentPrice < alert.price)) { await bot.api.sendMessage(AUTHORIZED_USER_ID, `🚨 *تنبيه سعر!* \`${alert.instId}\`\nالشرط: ${alert.condition} ${alert.price}\nالسعر الحالي: \`${currentPrice}\``, { parse_mode: "Markdown" }); triggered = true; } else { remainingAlerts.push(alert); } } if (triggered) await saveAlerts(remainingAlerts); } catch (error) { console.error("Error in checkPriceAlerts:", error); } }
-// **NEW FEATURE**: This function now also checks for total portfolio value changes.
 async function checkPriceMovements() {
     try {
         await sendDebugMessage("Checking price movements...");
@@ -882,7 +882,7 @@ async function startBot() {
 
         // Start all background jobs
         console.log("Starting OKX background jobs...");
-        setInterval(monitorBalanceChanges, 60 * 1000);
+        // setInterval(checkAndProcessBalanceChanges, 60 * 1000); // Replaced by WebSocket
         setInterval(trackPositionHighLow, 60 * 1000);
         setInterval(checkPriceAlerts, 30 * 1000);
         setInterval(checkPriceMovements, 60 * 1000);
@@ -891,17 +891,92 @@ async function startBot() {
         setInterval(runDailyJobs, 24 * 60 * 60 * 1000);
         setInterval(runDailyReportJob, 24 * 60 * 60 * 1000);
 
-      console.log("Running initial jobs on startup...");
+        console.log("Running initial jobs on startup...");
         await runHourlyJobs();
         await runDailyJobs();
-        await monitorBalanceChanges();
+        await checkAndProcessBalanceChanges(); // Sync once on startup
 
-        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح (نسخة v5 - نهائية)*\n\n- تم إصلاح خطأ التنسيق.\n- تم تفعيل تنبيهات حركة المحفظة.", { parse_mode: "Markdown" }).catch(console.error);
+        // Start real-time monitoring
+        connectToOKXSocket();
+
+        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح (نسخة v6 - WebSocket)*\n\n- تم تفعيل المراقبة اللحظية للمحفظة.", { parse_mode: "Markdown" }).catch(console.error);
 
     } catch (e) {
         console.error("FATAL: Could not start the bot.", e);
         process.exit(1);
     }
 }
+
+// =================================================================
+// SECTION 9: WEBSOCKET MANAGER (NEW)
+// =================================================================
+function connectToOKXSocket() {
+    const ws = new WebSocket('wss://ws.okx.com:8443/ws/v5/private');
+
+    ws.on('open', () => {
+        console.log("OKX WebSocket Connected! Authenticating...");
+        // 1. Send authentication request
+        const timestamp = (Date.now() / 1000).toString();
+        const prehash = timestamp + 'GET' + '/users/self/verify';
+        const sign = crypto.createHmac("sha256", OKX_CONFIG.apiSecret).update(prehash).digest("base64");
+        
+        ws.send(JSON.stringify({
+            op: "login",
+            args: [{
+                apiKey: OKX_CONFIG.apiKey,
+                passphrase: OKX_CONFIG.passphrase,
+                timestamp: timestamp,
+                sign: sign,
+            }]
+        }));
+    });
+
+    ws.on('message', async (data) => {
+        const message = JSON.parse(data.toString());
+        
+        if (message.event === 'login' && message.code === '0') {
+            console.log("WebSocket Authenticated successfully! Subscribing to account channel...");
+            // 2. Subscribe to the account channel after successful authentication
+            ws.send(JSON.stringify({
+                op: "subscribe",
+                args: [{
+                    channel: "account" // This channel sends balance updates
+                }]
+            }));
+        }
+
+        // 3. Process balance updates
+        if (message.arg?.channel === 'account' && message.data) {
+            console.log("Real-time balance update received via WebSocket.");
+            await sendDebugMessage("تحديث لحظي للرصيد، جاري المعالجة...");
+            // Trigger the same logic used for polling, but in real-time
+            await checkAndProcessBalanceChanges();
+        }
+
+        // Keep the connection alive
+        if (message === 'pong') {
+            // console.log('Received pong from OKX WebSocket.');
+        }
+    });
+
+    // Ping every 25 seconds to keep the connection alive
+    const pingInterval = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+            ws.send('ping');
+        }
+    }, 25000);
+
+    ws.on('close', () => {
+        console.log("OKX WebSocket Disconnected. Reconnecting in 5 seconds...");
+        clearInterval(pingInterval);
+        setTimeout(connectToOKXSocket, 5000); // Auto-reconnect
+    });
+
+    ws.on('error', (err) => {
+        console.error("OKX WebSocket Error:", err);
+        // The 'close' event will usually fire after an error, triggering reconnection.
+    });
+}
+
 
 startBot();
