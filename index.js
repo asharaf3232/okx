@@ -1,5 +1,5 @@
 // =================================================================
-// Advanced Analytics Bot - v144.3 (Diagnostic Logging)
+// Advanced Analytics Bot - v144.4 (Final Markdown Fix)
 // =================================================================
 // --- IMPORTS ---
 const express = require("express");
@@ -205,7 +205,7 @@ function formatPrivateCloseReport(details) {
         const actualGain = avgSellPrice - avgBuyPrice;
         if (potentialGain > 0) {
             const efficiency = (actualGain / potentialGain) * 100;
-            exitEfficiencyText = ` ▪️ *كفاءة الخروج:* 📈 \`${formatNumber(efficiency)}%\`\n`;
+            exitEfficiencyText = ` ▪️ *كفاءة الخروج:* � \`${formatNumber(efficiency)}%\`\n`;
         }
     }
 
@@ -567,7 +567,7 @@ async function monitorBalanceChanges() { try { await sendDebugMessage("Checking 
 async function trackPositionHighLow() { try { const positions = await loadPositions(); if (Object.keys(positions).length === 0) return; const prices = await okxAdapter.getMarketPrices(); let positionsUpdated = false; for (const symbol in positions) { const position = positions[symbol]; const currentPrice = prices[`${symbol}-USDT`]?.price; if (currentPrice) { if (!position.highestPrice || currentPrice > position.highestPrice) { position.highestPrice = currentPrice; positionsUpdated = true; } if (!position.lowestPrice || currentPrice < position.lowestPrice) { position.lowestPrice = currentPrice; positionsUpdated = true; } } } if (positionsUpdated) { await savePositions(positions); await sendDebugMessage("Updated position high/low prices."); } } catch(e) { console.error("CRITICAL ERROR in trackPositionHighLow:", e); } }
 async function checkPriceAlerts() { try { const alerts = await loadAlerts(); if (alerts.length === 0) return; const prices = await okxAdapter.getMarketPrices(); const remainingAlerts = []; let triggered = false; for (const alert of alerts) { const currentPrice = prices[alert.instId]?.price; if (currentPrice === undefined) { remainingAlerts.push(alert); continue; } if ((alert.condition === '>' && currentPrice > alert.price) || (alert.condition === '<' && currentPrice < alert.price)) { await bot.api.sendMessage(AUTHORIZED_USER_ID, `🚨 *تنبيه سعر!* \`${alert.instId}\`\nالشرط: ${alert.condition} ${alert.price}\nالسعر الحالي: \`${currentPrice}\``, { parse_mode: "Markdown" }); triggered = true; } else { remainingAlerts.push(alert); } } if (triggered) await saveAlerts(remainingAlerts); } catch (error) { console.error("Error in checkPriceAlerts:", error); } }
 
-// --- FIXED: Smarter Price Movement Alerts with DETAILED DIAGNOSTIC LOGGING ---
+// --- FINAL FIX: Corrected Markdown Escaping in Alert Messages ---
 async function checkPriceMovements() {
     try {
         await sendDebugMessage("بدء فحص حركة الأسعار...");
@@ -605,7 +605,8 @@ async function checkPriceMovements() {
 
                 if (Math.abs(changePercent) >= threshold) {
                     const movementText = changePercent > 0 ? 'صعود' : 'هبوط';
-                    const message = `📈 *تنبيه حركة سعر لأصل\\!* \`${asset.asset}\`\n*الحركة:* ${movementText} بنسبة \`${formatNumber(changePercent)}%\`\n*السعر الحالي:* \`$${formatNumber(asset.price, 4)}\``;
+                    // FIX: Removed manual backslash before '!'
+                    const message = `📈 *تنبيه حركة سعر لأصل!* \`${asset.asset}\`\n*الحركة:* ${movementText} بنسبة \`${formatNumber(changePercent)}%\`\n*السعر الحالي:* \`$${formatNumber(asset.price, 4)}\``;
                     await bot.api.sendMessage(AUTHORIZED_USER_ID, sanitizeMarkdownV2(message), { parse_mode: "MarkdownV2" });
                     await sendDebugMessage(`✅ تم إرسال تنبيه لـ ${asset.asset}.`);
                 }
@@ -622,7 +623,8 @@ async function checkPriceMovements() {
 
             if (Math.abs(totalChangePercent) >= globalThreshold) {
                 const movementText = totalChangePercent > 0 ? 'صعود' : 'هبوط';
-                const message = `💼 *تنبيه حركة المحفظة\\!* \n*الحركة:* ${movementText} بنسبة \`${formatNumber(totalChangePercent)}%\`\n*القيمة الحالية:* \`$${formatNumber(currentTotalValue)}\``;
+                 // FIX: Removed manual backslash before '!'
+                const message = `💼 *تنبيه حركة المحفظة!* \n*الحركة:* ${movementText} بنسبة \`${formatNumber(totalChangePercent)}%\`\n*القيمة الحالية:* \`$${formatNumber(currentTotalValue)}\``;
                 await bot.api.sendMessage(AUTHORIZED_USER_ID, sanitizeMarkdownV2(message), { parse_mode: "MarkdownV2" });
                 await sendDebugMessage(`✅ تم إرسال تنبيه للمحفظة.`);
             }
