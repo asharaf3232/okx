@@ -1,5 +1,5 @@
 // =================================================================
-// Advanced Analytics Bot - v141.7 (WebSocket Pong Fix)
+// Advanced Analytics Bot - v142.0 (Fundamental AI Analysis)
 // =================================================================
 // --- IMPORTS ---
 const express = require("express");
@@ -188,7 +188,7 @@ const sanitizeMarkdownV2 = (text) => { if (!text) return ''; const charsToEscape
 // SECTION 3: FORMATTING AND MESSAGE FUNCTIONS
 // =================================================================
 function formatClosedTradeReview(trade, currentPrice) { const { asset, avgBuyPrice, avgSellPrice, quantity, pnl: actualPnl, pnlPercent: actualPnlPercent } = trade; let msg = `*🔍 مراجعة صفقة مغلقة | ${asset}*\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n`; msg += `*ملاحظة: هذا تحليل "ماذا لو" لصفقة مغلقة، ولا يؤثر على محفظتك الحالية.*\n\n`; msg += `*ملخص الأسعار الرئيسي:*\n`; msg += `  - 💵 *سعر الشراء الأصلي:* \`$${formatNumber(avgBuyPrice, 4)}\`\n`; msg += `  - ✅ *سعر الإغلاق الفعلي:* \`$${formatNumber(avgSellPrice, 4)}\`\n`; msg += `  - 📈 *السعر الحالي للسوق:* \`$${formatNumber(currentPrice, 4)}\`\n\n`; const actualPnlSign = actualPnl >= 0 ? '+' : ''; const actualEmoji = actualPnl >= 0 ? '🟢' : '🔴'; msg += `*الأداء الفعلي للصفقة (عند الإغلاق):*\n`; msg += `  - *النتيجة:* \`${actualPnlSign}$${formatNumber(actualPnl)}\` ${actualEmoji}\n`; msg += `  - *نسبة العائد:* \`${actualPnlSign}${formatNumber(actualPnlPercent)}%\`\n\n`; const hypotheticalPnl = (currentPrice - avgBuyPrice) * quantity; const hypotheticalPnlPercent = (avgBuyPrice > 0) ? (hypotheticalPnl / (avgBuyPrice * quantity)) * 100 : 0; const hypotheticalPnlSign = hypotheticalPnl >= 0 ? '+' : ''; const hypotheticalEmoji = hypotheticalPnl >= 0 ? '🟢' : '🔴'; msg += `*الأداء الافتراضي (لو بقيت الصفقة مفتوحة):*\n`; msg += `  - *النتيجة الحالية:* \`${hypotheticalPnlSign}$${formatNumber(hypotheticalPnl)}\` ${hypotheticalEmoji}\n`; msg += `  - *نسبة العائد الحالية:* \`${hypotheticalPnlSign}${formatNumber(hypotheticalPnlPercent)}%\`\n\n`; const priceChangeSinceClose = currentPrice - avgSellPrice; const priceChangePercent = (avgSellPrice > 0) ? (priceChangeSinceClose / avgSellPrice) * 100 : 0; const changeSign = priceChangeSinceClose >= 0 ? '⬆️' : '⬇️'; msg += `*تحليل قرار الخروج:*\n`; msg += `  - *حركة السعر منذ الإغلاق:* \`${formatNumber(priceChangePercent)}%\` ${changeSign}\n`; if (priceChangeSinceClose > 0) { msg += `  - *الخلاصة:* 📈 لقد واصل السعر الصعود بعد خروجك. كانت هناك فرصة لتحقيق ربح أكبر.\n`; } else { msg += `  - *الخلاصة:* ✅ لقد كان قرارك بالخروج صائبًا، حيث انخفض السعر بعد ذلك وتجنبت خسارة أو تراجع في الأرباح.\n`; } return msg; }
-function formatPrivateBuy(details) { const { asset, price, amountChange, tradeValue, oldTotalValue, newAssetWeight, newUsdtValue, newCashPercent } = details; const tradeSizePercent = oldTotalValue > 0 ? (tradeValue / oldTotalValue) * 100 : 0; let msg = `*مراقبة الأصول 🔬:*\n**عملية استحواذ جديدة �**\n━━━━━━━━━━━━━━━━━━━━\n`; msg += `🔸 **الأصل المستهدف:** \`${asset}/USDT\`\n`; msg += `🔸 **نوع العملية:** تعزيز مركز / بناء مركز جديد\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n*تحليل الصفقة:*\n`; msg += ` ▪️ **سعر التنفيذ:** \`$${formatNumber(price, 4)}\`\n`; msg += ` ▪️ **الكمية المضافة:** \`${formatNumber(Math.abs(amountChange), 6)}\`\n`; msg += ` ▪️ **التكلفة الإجمالية للصفقة:** \`$${formatNumber(tradeValue)}\`\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n*التأثير على هيكل المحفظة:*\n`; msg += ` ▪️ **حجم الصفقة من إجمالي المحفظة:** \`${formatNumber(tradeSizePercent)}%\`\n`; msg += ` ▪️ **الوزن الجديد للأصل:** \`${formatNumber(newAssetWeight)}%\`\n`; msg += ` ▪️ **السيولة المتبقية (USDT):** \`$${formatNumber(newUsdtValue)}\`\n`; msg += ` ▪️ **مؤشر السيولة الحالي:** \`${formatNumber(newCashPercent)}%\`\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n*بتاريخ:* ${new Date().toLocaleString("ar-EG", { timeZone: "Africa/Cairo" })}`; return msg; }
+function formatPrivateBuy(details) { const { asset, price, amountChange, tradeValue, oldTotalValue, newAssetWeight, newUsdtValue, newCashPercent } = details; const tradeSizePercent = oldTotalValue > 0 ? (tradeValue / oldTotalValue) * 100 : 0; let msg = `*مراقبة الأصول 🔬:*\n**عملية استحواذ جديدة 🟢**\n━━━━━━━━━━━━━━━━━━━━\n`; msg += `🔸 **الأصل المستهدف:** \`${asset}/USDT\`\n`; msg += `🔸 **نوع العملية:** تعزيز مركز / بناء مركز جديد\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n*تحليل الصفقة:*\n`; msg += ` ▪️ **سعر التنفيذ:** \`$${formatNumber(price, 4)}\`\n`; msg += ` ▪️ **الكمية المضافة:** \`${formatNumber(Math.abs(amountChange), 6)}\`\n`; msg += ` ▪️ **التكلفة الإجمالية للصفقة:** \`$${formatNumber(tradeValue)}\`\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n*التأثير على هيكل المحفظة:*\n`; msg += ` ▪️ **حجم الصفقة من إجمالي المحفظة:** \`${formatNumber(tradeSizePercent)}%\`\n`; msg += ` ▪️ **الوزن الجديد للأصل:** \`${formatNumber(newAssetWeight)}%\`\n`; msg += ` ▪️ **السيولة المتبقية (USDT):** \`$${formatNumber(newUsdtValue)}\`\n`; msg += ` ▪️ **مؤشر السيولة الحالي:** \`${formatNumber(newCashPercent)}%\`\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n*بتاريخ:* ${new Date().toLocaleString("ar-EG", { timeZone: "Africa/Cairo" })}`; return msg; }
 function formatPrivateSell(details) { const { asset, price, amountChange, tradeValue, oldTotalValue, newAssetWeight, newUsdtValue, newCashPercent } = details; const tradeSizePercent = oldTotalValue > 0 ? (tradeValue / oldTotalValue) * 100 : 0; let msg = `*مراقبة الأصول 🔬:*\n**مناورة تكتيكية 🟠**\n━━━━━━━━━━━━━━━━━━━━\n`; msg += `🔸 **الأصل المستهدف:** \`${asset}/USDT\`\n`; msg += `🔸 **نوع العملية:** تخفيف المركز / جني أرباح جزئي\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n*تحليل الصفقة:*\n`; msg += ` ▪️ **سعر التنفيذ:** \`$${formatNumber(price, 4)}\`\n`; msg += ` ▪️ **الكمية المخففة:** \`${formatNumber(Math.abs(amountChange), 6)}\`\n`; msg += ` ▪️ **العائد الإجمالي للصفقة:** \`$${formatNumber(tradeValue)}\`\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n*التأثير على هيكل المحفظة:*\n`; msg += ` ▪️ **حجم الصفقة من إجمالي المحفظة:** \`${formatNumber(tradeSizePercent)}%\`\n`; msg += ` ▪️ **الوزن الجديد للأصل:** \`${formatNumber(newAssetWeight)}%\`\n`; msg += ` ▪️ **السيولة الجديدة (USDT):** \`$${formatNumber(newUsdtValue)}\`\n`; msg += ` ▪️ **مؤشر السيولة الحالي:** \`${formatNumber(newCashPercent)}%\`\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n*بتاريخ:* ${new Date().toLocaleString("ar-EG", { timeZone: "Africa/Cairo" })}`; return msg; }
 function formatPrivateCloseReport(details) { const { asset, avgBuyPrice, avgSellPrice, pnl, pnlPercent, durationDays, highestPrice, lowestPrice } = details; const pnlSign = pnl >= 0 ? '+' : ''; const emoji = pnl >= 0 ? '🟢' : '🔴'; let msg = `*ملف المهمة المكتملة 📂:*\n**تم إغلاق مركز ${asset} بنجاح ✅**\n━━━━━━━━━━━━━━━━━━━━\n`; msg += `*النتيجة النهائية للمهمة:*\n`; msg += ` ▪️ **الحالة:** **${pnl >= 0 ? "مربحة" : "خاسرة"}**\n`; msg += ` ▪️ **صافي الربح/الخسارة:** \`${pnlSign}$${formatNumber(pnl)}\` ${emoji}\n`; msg += ` ▪️ **نسبة العائد على الاستثمار (ROI):** \`${pnlSign}${formatNumber(pnlPercent)}%\`\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n*الجدول الزمني والأداء:*\n`; msg += ` ▪️ **مدة الاحتفاظ بالمركز:** \`${formatNumber(durationDays, 1)} يوم\`\n`; msg += ` ▪️ **متوسط سعر الدخول:** \`$${formatNumber(avgBuyPrice, 4)}\`\n`; msg += ` ▪️ **متوسط سعر الخروج:** \`$${formatNumber(avgSellPrice, 4)}\`\n`; msg += ` ▪️ **أعلى قمة سعرية مسجلة:** \`$${formatNumber(highestPrice, 4)}\`\n`; msg += ` ▪️ **أدنى قاع سعري مسجل:** \`$${formatNumber(lowestPrice, 4)}\`\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n*بتاريخ الإغلاق:* ${new Date().toLocaleString("ar-EG", { timeZone: "Africa/Cairo" })}`; return msg; }
 function formatPublicBuy(details) { const { asset, price, oldTotalValue, tradeValue, oldUsdtValue, newCashPercent } = details; const tradeSizePercent = oldTotalValue > 0 ? (tradeValue / oldTotalValue) * 100 : 0; const cashConsumedPercent = (oldUsdtValue > 0) ? (tradeValue / oldUsdtValue) * 100 : 0; let msg = `*💡 توصية جديدة: بناء مركز في ${asset} 🟢*\n━━━━━━━━━━━━━━━━━━━━\n`; msg += `*الأصل:* \`${asset}/USDT\`\n`; msg += `*سعر الدخول الحالي:* \`$${formatNumber(price, 4)}\`\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n*استراتيجية إدارة المحفظة:*\n`; msg += ` ▪️ *حجم الدخول:* تم تخصيص \`${formatNumber(tradeSizePercent)}%\` من المحفظة لهذه الصفقة.\n`; msg += ` ▪️ *استهلاك السيولة:* استهلك هذا الدخول \`${formatNumber(cashConsumedPercent)}%\` من السيولة النقدية المتاحة.\n`; msg += ` ▪️ *السيولة المتبقية:* بعد الصفقة، أصبحت السيولة تشكل \`${formatNumber(newCashPercent)}%\` من المحفظة.\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n*ملاحظات:*\nنرى في هذه المستويات فرصة واعدة. المراقبة مستمرة، وسنوافيكم بتحديثات إدارة الصفقة.\n`; msg += `#توصية #${asset}`; return msg; }
@@ -231,31 +231,75 @@ async function analyzeWithAI(prompt) {
     }
 }
 
+// --- NEW: Function to get coin fundamentals from CoinGecko ---
+async function getCoinFundamentals(coinSymbol) {
+    try {
+        // Step 1: Find the coin ID from the symbol
+        const listRes = await fetch('https://api.coingecko.com/api/v3/coins/list');
+        const coinList = await listRes.json();
+        const coin = coinList.find(c => c.symbol.toLowerCase() === coinSymbol.toLowerCase());
+        if (!coin) {
+            return { error: "لم يتم العثور على العملة في قاعدة البيانات." };
+        }
+        const coinId = coin.id;
+
+        // Step 2: Fetch detailed data using the ID
+        const dataRes = await fetch(`https://api.coingecko.com/api/v3/coins/${coinId}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false`);
+        const data = await dataRes.json();
+        
+        if (data.error) {
+            return { error: data.error };
+        }
+
+        // Extract the most useful info
+        return {
+            rank: data.market_cap_rank || 'N/A',
+            category: data.categories?.[0] || 'Unknown',
+            description: data.description?.ar || data.description?.en?.split('. ')[0] || 'لا يوجد وصف متاح.'
+        };
+    } catch (error) {
+        console.error(`CoinGecko API Error for ${coinSymbol}:`, error);
+        return { error: "فشل الاتصال بخدمة بيانات المشاريع." };
+    }
+}
+
+
 async function getAIAnalysisForAsset(asset) {
     const instId = `${asset}-USDT`;
-    const [details, tech, perf] = await Promise.all([
+    // Fetch all data points in parallel
+    const [details, tech, perf, fundamentals] = await Promise.all([
         getInstrumentDetails(instId),
         getTechnicalAnalysis(instId),
-        getHistoricalPerformance(asset)
+        getHistoricalPerformance(asset),
+        getCoinFundamentals(asset) // <-- Fetch fundamental data
     ]);
 
     if (details.error) return `لا يمكن تحليل ${asset}: ${details.error}`;
     if (tech.error) return `لا يمكن تحليل ${asset}: ${tech.error}`;
     if (!perf) return `لا يمكن تحليل ${asset}: فشل جلب الأداء التاريخي.`;
 
+    // --- NEW: Updated prompt with fundamental data ---
     const prompt = `
-    قم بتحليل عملة ${asset} بناءً على البيانات التالية:
-    - السعر الحالي: $${formatNumber(details.price, 4)}
-    - أعلى 24 ساعة: $${formatNumber(details.high24h, 4)}
-    - أدنى 24 ساعة: $${formatNumber(details.low24h, 4)}
-    - حجم التداول (24س): $${formatNumber(details.vol24h / 1e6)} مليون
-    - RSI (14 يوم): ${tech.rsi ? formatNumber(tech.rsi) : 'N/A'}
-    - SMA20: $${tech.sma20 ? formatNumber(tech.sma20, 4) : 'N/A'}
-    - SMA50: $${tech.sma50 ? formatNumber(tech.sma50, 4) : 'N/A'}
-    - عدد صفقاتي السابقة عليها: ${perf.tradeCount}
-    - معدل نجاحي معها: ${perf.tradeCount > 0 ? formatNumber((perf.winningTrades / perf.tradeCount) * 100) : '0'}%
-    
-    قدم تحليلًا موجزًا، توصية واضحة (شراء/بيع/مراقبة)، وسببك في فقرة واحدة بلغة عربية احترافية وسهلة.
+    أنت محلل خبير. قم بتحليل عملة ${asset} بشكل شامل يدمج بين التحليل الأساسي والفني وتاريخي الشخصي معها.
+
+    **1. بيانات المشروع الأساسية:**
+    - **الترتيب السوقي:** ${fundamentals.rank || 'غير معروف'}
+    - **الفئة:** ${fundamentals.category || 'غير معروف'}
+    - **وصف المشروع:** ${fundamentals.description || 'لا يوجد'}
+
+    **2. البيانات الفنية الحالية:**
+    - **السعر الحالي:** $${formatNumber(details.price, 4)}
+    - **أعلى 24 ساعة:** $${formatNumber(details.high24h, 4)}
+    - **أدنى 24 ساعة:** $${formatNumber(details.low24h, 4)}
+    - **RSI (14 يوم):** ${tech.rsi ? formatNumber(tech.rsi) : 'N/A'}
+    - **علاقة السعر بالمتوسطات:** السعر حاليًا ${details.price > tech.sma20 ? 'فوق' : 'تحت'} SMA20 و ${details.price > tech.sma50 ? 'فوق' : 'تحت'} SMA50.
+
+    **3. بياناتي التاريخية مع العملة:**
+    - **عدد صفقاتي السابقة:** ${perf.tradeCount}
+    - **معدل نجاحي:** ${perf.tradeCount > 0 ? formatNumber((perf.winningTrades / perf.tradeCount) * 100) : '0'}%
+
+    **المطلوب:**
+    قدم تحليلًا متكاملاً في فقرة واحدة. ابدأ بوصف المشروع ومكانته، ثم اربطه بالوضع الفني الحالي، وأخيرًا، قدم توصية واضحة (شراء/بيع/مراقبة) مع الأخذ في الاعتبار تاريخي الشخصي مع العملة.
     `;
 
     return await analyzeWithAI(prompt);
@@ -283,12 +327,7 @@ async function getLatestCryptoNews(searchQuery) {
         const apiKey = process.env.NEWS_API_KEY;
         if (!apiKey) throw new Error("NEWS_API_KEY is not configured.");
         
-        // Get today's date minus 3 days for the 'from' parameter for recent news
         const fromDate = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-
-        // REMOVED '&language=ar' to get a wider range of news (mostly English).
-        // The AI will handle the translation and summarization in Arabic.
-        // CHANGED 'sortBy' to 'relevancy' to get more accurate articles.
         const url = `https://newsapi.org/v2/everything?q=(${searchQuery})&sortBy=relevancy&from=${fromDate}&pageSize=10&apiKey=${apiKey}`;
         
         const res = await fetch(url);
@@ -301,11 +340,10 @@ async function getLatestCryptoNews(searchQuery) {
             throw new Error(`NewsAPI error: ${data.message}`);
         }
         
-        // Return more data for the AI to process, including content.
         return data.articles.map(article => ({
             title: article.title,
             source: article.source.name,
-            content: article.content || article.description, // Prefer content over description for better summary
+            content: article.content || article.description,
             url: article.url
         }));
 
@@ -320,10 +358,8 @@ async function getAIGeneralNewsSummary() {
     if (newsArticles.error) return `❌ فشل في جلب الأخبار: ${newsArticles.error}`;
     if (newsArticles.length === 0) return "ℹ️ لم يتم العثور على أخبار حديثة عن الكريبتو حاليًا.";
 
-    // The articles are now likely in English, so we need to instruct the AI accordingly.
     const articlesForPrompt = newsArticles.map(a => `Source: ${a.source}\nTitle: ${a.title}\nContent: ${a.content}`).join('\n\n---\n\n');
     
-    // New, more detailed prompt for the AI
     const prompt = `You are an expert news editor. The following is a list of recent news articles, likely in English. Your task is to:
 1. Identify the 3-4 most important news items related to the cryptocurrency market.
 2. Summarize them concisely in PROFESSIONAL ARABIC.
@@ -345,7 +381,6 @@ async function getAIPortfolioNewsSummary() {
         return "ℹ️ لا تحتوي محفظتك على عملات رقمية لجلب أخبار متعلقة بها.";
     }
 
-    // Make the search query more specific to get relevant news
     const assetSymbols = cryptoAssets.map(a => `"${a.asset} crypto"`).join(' OR '); 
     
     const newsArticles = await getLatestCryptoNews(assetSymbols);
@@ -354,7 +389,6 @@ async function getAIPortfolioNewsSummary() {
     
     const articlesForPrompt = newsArticles.map(a => `Source: ${a.source}\nTitle: ${a.title}\nContent: ${a.content}`).join('\n\n---\n\n');
     
-    // New, more detailed prompt for the AI
     const prompt = `You are a personal financial advisor. My portfolio contains the following assets: ${assetSymbols}. Below is a list of recent news articles, likely in English. Your task is to:
 1. Summarize the most important news from the list that could affect my investments.
 2. Explain the potential impact of each news item simply.
@@ -443,7 +477,7 @@ async function runHourlyJobs() { try { const prices = await okxAdapter.getMarket
 async function monitorVirtualTrades() { const activeTrades = await getActiveVirtualTrades(); if (activeTrades.length === 0) return; const prices = await okxAdapter.getMarketPrices(); if (!prices || prices.error) return; for (const trade of activeTrades) { const currentPrice = prices[trade.instId]?.price; if (!currentPrice) continue; let finalStatus = null; let pnl = 0; let finalPrice = 0; if (currentPrice >= trade.targetPrice) { finalPrice = trade.targetPrice; pnl = (finalPrice - trade.entryPrice) * (trade.virtualAmount / trade.entryPrice); finalStatus = 'completed'; const profitPercent = (trade.virtualAmount > 0) ? (pnl / trade.virtualAmount) * 100 : 0; const msg = `🎯 *الهدف تحقق (توصية افتراضية)!* ✅\n\n` + `*العملة:* \`${trade.instId}\`\n` + `*سعر الدخول:* \`$${formatNumber(trade.entryPrice, 4)}\`\n` + `*سعر الهدف:* \`$${formatNumber(trade.targetPrice, 4)}\`\n\n` + `💰 *الربح المحقق:* \`+$${formatNumber(pnl)}\` (\`+${formatNumber(profitPercent)}%\`)`; await bot.api.sendMessage(AUTHORIZED_USER_ID, msg, { parse_mode: "Markdown" }); } else if (currentPrice <= trade.stopLossPrice) { finalPrice = trade.stopLossPrice; pnl = (finalPrice - trade.entryPrice) * (trade.virtualAmount / trade.entryPrice); finalStatus = 'stopped'; const lossPercent = (trade.virtualAmount > 0) ? (pnl / trade.virtualAmount) * 100 : 0; const msg = `🛑 *تم تفعيل وقف الخسارة (توصية افتراضية)!* 🔻\n\n` + `*العملة:* \`${trade.instId}\`\n` + `*سعر الدخول:* \`$${formatNumber(trade.entryPrice, 4)}\`\n` + `*سعر الوقف:* \`$${formatNumber(trade.stopLossPrice, 4)}\`\n\n` + `💸 *الخسارة:* \`$${formatNumber(pnl)}\` (\`${formatNumber(lossPercent)}%\`)`; await bot.api.sendMessage(AUTHORIZED_USER_ID, msg, { parse_mode: "Markdown" }); } if (finalStatus) { await updateVirtualTradeStatus(trade._id, finalStatus, finalPrice); } } }
 async function formatDailyCopyReport() { const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000); const closedTrades = await getCollection("tradeHistory").find({ closedAt: { $gte: twentyFourHoursAgo } }).toArray(); if (closedTrades.length === 0) { return "📊 لم يتم إغلاق أي صفقات في الـ 24 ساعة الماضية."; } const today = new Date(); const dateString = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`; let report = `📊 تقرير النسخ اليومي – خلال الـ24 ساعة الماضية\n🗓 التاريخ: ${dateString}\n\n`; let totalPnlWeightedSum = 0; let totalWeight = 0; for (const trade of closedTrades) { if (trade.pnlPercent === undefined || trade.entryCapitalPercent === undefined) continue; const resultEmoji = trade.pnlPercent >= 0 ? '🔼' : '🔽'; report += `🔸اسم العملة: ${trade.asset}\n`; report += `🔸 نسبة الدخول من رأس المال: ${formatNumber(trade.entryCapitalPercent)}%\n`; report += `🔸 متوسط سعر الشراء: ${formatNumber(trade.avgBuyPrice, 4)}\n`; report += `🔸 سعر الخروج: ${formatNumber(trade.avgSellPrice, 4)}\n`; report += `🔸 نسبة الخروج من الكمية: ${formatNumber(trade.exitQuantityPercent)}%\n`; report += `🔸 النتيجة: ${trade.pnlPercent >= 0 ? '+' : ''}${formatNumber(trade.pnlPercent)}% ${resultEmoji}\n\n`; if (trade.entryCapitalPercent > 0) { totalPnlWeightedSum += trade.pnlPercent * trade.entryCapitalPercent; totalWeight += trade.entryCapitalPercent; } } const totalPnl = totalWeight > 0 ? totalPnlWeightedSum / totalWeight : 0; const totalPnlEmoji = totalPnl >= 0 ? '📈' : '📉'; report += `إجمالي الربح الحالي خدمة النسخ: ${totalPnl >= 0 ? '+' : ''}${formatNumber(totalPnl, 2)}% ${totalPnlEmoji}\n\n`; report += `✍️ يمكنك الدخول في اي وقت تراه مناسب، الخدمة مفتوحة للجميع\n\n`; report += `📢 قناة التحديثات الرسمية:\n@abusalamachart\n\n`; report += `🌐 رابط النسخ المباشر:\n🏦 https://t.me/abusalamachart`; return report; }
 async function runDailyReportJob() { try { await sendDebugMessage("Running daily copy-trading report job..."); const report = await formatDailyCopyReport(); if (report.startsWith("📊 لم يتم إغلاق أي صفقات")) { await bot.api.sendMessage(AUTHORIZED_USER_ID, report); } else { await bot.api.sendMessage(process.env.TARGET_CHANNEL_ID, report); await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ تم إرسال تقرير النسخ اليومي إلى القناة بنجاح."); } } catch(e) { console.error("Error in runDailyReportJob:", e); await bot.api.sendMessage(AUTHORIZED_USER_ID, `❌ حدث خطأ أثناء إنشاء تقرير النسخ اليومي: ${e.message}`); } }
-async function generateAndSendCumulativeReport(ctx, asset) { try { const trades = await getCollection("tradeHistory").find({ asset: asset }).toArray(); if (trades.length === 0) { await ctx.reply(`ℹ️ لا يوجد سجل صفقات مغلقة لعملة *${asset}*.`, { parse_mode: "Markdown" }); return; } const totalPnl = trades.reduce((sum, trade) => sum + (trade.pnl || 0), 0); const totalRoi = trades.reduce((sum, trade) => sum + (trade.pnlPercent || 0), 0); const avgRoi = trades.length > 0 ? totalRoi / trades.length : 0; const winningTrades = trades.filter(t => (t.pnl || 0) > 0).length; const winRate = trades.length > 0 ? (winningTrades / trades.length) * 100 : 0; const bestTrade = trades.reduce((max, trade) => (trade.pnlPercent || 0) > (max.pnlPercent || 0) ? trade : max, trades[0]); const worstTrade = trades.reduce((min, trade) => (min.pnlPercent !== undefined && (trade.pnlPercent || 0) < min.pnlPercent) ? trade : min, { pnlPercent: 0}); const impactSign = totalPnl >= 0 ? '+' : ''; const impactEmoji = totalPnl >= 0 ? '🟢' : '🔴'; const winRateEmoji = winRate >= 50 ? '✅' : '⚠️'; let report = `*تحليل الأثر التراكمي | ${asset}* 🔬\n\n`; report += `*الخلاصة الاستراتيجية:*\n`; report += `تداولاتك في *${asset}* أضافت ما قيمته \`${impactSign}$${formatNumber(totalPnl)}\` ${impactEmoji} إلى محفظتك بشكل تراكمي.\n\n`; report += `*ملخص الأداء التاريخي:*\n`; report += ` ▪️ *إجمالي الصفقات:* \`${trades.length}\`\n`; report += ` ▪️ *معدل النجاح (Win Rate):* \`${formatNumber(winRate)}%\` ${winRateEmoji}\n`; report += ` ▪️ *متوسط العائد (ROI):* \`${formatNumber(avgRoi)}%\`\n\n`; report += `*أبرز الصفقات:*\n`; report += ` 🏆 *أفضل صفقة:* ربح بنسبة \`${formatNumber(bestTrade.pnlPercent)}%\`\n`; report += ` 💔 *أسوأ صفقة:* ${worstTrade.pnlPercent < 0 ? 'خسارة' : 'ربح'} بنسبة \`${formatNumber(worstTrade.pnlPercent)}%\`\n\n`; report += `*توصية استراتيجية خاصة:*\n`; if (avgRoi > 5 && winRate > 60) { report += `أداء *${asset}* يتفوق على المتوسط بشكل واضح. قد تفكر في زيادة حجم صفقاتك المستقبلية فيها.`; } else if (totalPnl < 0) { report += `أداء *${asset}* سلبي. قد ترغب في مراجعة استراتيجيتك لهذه العملة أو تقليل المخاطرة فيها.`; } else { report += `أداء *${asset}* يعتبر ضمن النطاق المقبول. استمر في المراقبة والتحليل.`; } await ctx.reply(report, { parse_mode: "Markdown" }); } catch(e) { console.error(`Error generating cumulative report for ${asset}:`, e); await ctx.reply("❌ حدث خطأ أثناء إنشاء التقرير."); } }
+async function generateAndSendCumulativeReport(ctx, asset) { try { const trades = await getCollection("tradeHistory").find({ asset: asset }).toArray(); if (trades.length === 0) { await ctx.reply(`ℹ️ لا يوجد سجل صفقات مغلقة لعملة *${asset}*.`, { parse_mode: "Markdown" }); return; } const totalPnl = trades.reduce((sum, trade) => sum + (trade.pnl || 0), 0); const totalRoi = trades.reduce((sum, trade) => sum + (trade.pnlPercent || 0), 0); const avgRoi = trades.length > 0 ? totalRoi / trades.length : 0; const winningTrades = trades.filter(t => (t.pnl || 0) > 0).length; const winRate = trades.length > 0 ? (winningTrades / trades.length) * 100 : 0; const bestTrade = trades.reduce((max, trade) => (trade.pnlPercent || 0) > (max.pnlPercent || 0) ? trade : max, trades[0]); const worstTrade = trades.reduce((min, trade) => (min.pnlPercent !== undefined && (trade.pnlPercent || 0) < min.pnlPercent) ? trade : min, { pnlPercent: 0}); const impactSign = totalPnl >= 0 ? '+' : ''; const impactEmoji = totalPnl >= 0 ? '🟢' : '🔴'; const winRateEmoji = winRate >= 50 ? '✅' : '⚠️'; let report = `*تحليل الأثر التراكمي | ${asset}* 🔬\n\n`; report += `*الخلاصة الاستراتيجية:*\n`; report += `تداولاتك في *${asset}* أضافت ما قيمته \`${impactSign}$${formatNumber(totalPnl)}\` ${impactEmoji} إلى محفظتك بشكل تراكمي.\n\n`; report += `*ملخص الأداء التاريخي:*\n`; report += ` ▪️ *إجمالي الصفقات:* \`${trades.length}\`\n`; report += ` ▪️ *معدل النجاح (Win Rate):* \`${formatNumber(winRate)}%\` ${winRateEmoji}\n`; report += ` ▪️ *متوسط العائد (ROI):* \`${formatNumber(avgRoi)}%\`\n\n`; report += `*أبرز الصفقات:*\n`; report += ` � *أفضل صفقة:* ربح بنسبة \`${formatNumber(bestTrade.pnlPercent)}%\`\n`; report += ` 💔 *أسوأ صفقة:* ${worstTrade.pnlPercent < 0 ? 'خسارة' : 'ربح'} بنسبة \`${formatNumber(worstTrade.pnlPercent)}%\`\n\n`; report += `*توصية استراتيجية خاصة:*\n`; if (avgRoi > 5 && winRate > 60) { report += `أداء *${asset}* يتفوق على المتوسط بشكل واضح. قد تفكر في زيادة حجم صفقاتك المستقبلية فيها.`; } else if (totalPnl < 0) { report += `أداء *${asset}* سلبي. قد ترغب في مراجعة استراتيجيتك لهذه العملة أو تقليل المخاطرة فيها.`; } else { report += `أداء *${asset}* يعتبر ضمن النطاق المقبول. استمر في المراقبة والتحليل.`; } await ctx.reply(report, { parse_mode: "Markdown" }); } catch(e) { console.error(`Error generating cumulative report for ${asset}:`, e); await ctx.reply("❌ حدث خطأ أثناء إنشاء التقرير."); } }
 
 
 // =================================================================
