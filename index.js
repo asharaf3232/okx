@@ -572,65 +572,62 @@ async function checkPriceMovements() {
     try {
         await sendDebugMessage("Checking price movements...");
         const alertSettings = await loadAlertSettings();
-        // Load the state from the PREVIOUS run
-        const lastPriceTracker = await loadPriceTracker();
-        // Create a new state object for THIS run
-        const currentPriceTracker = { totalPortfolioValue: 0, assets: {} };
-
+        const priceTracker = await loadPriceTracker();
         const prices = await okxAdapter.getMarketPrices();
-        const { assets, total: currentTotalValue } = await okxAdapter.getPortfolio(prices);
+        if (!prices || prices.error) return;
 
-        // Populate the current state tracker with fresh data
-        currentPriceTracker.totalPortfolioValue = currentTotalValue;
-        assets.forEach(a => {
-            if (a.price) currentPriceTracker.assets[a.asset] = a.price;
-        });
+        const { assets, total: currentTotalValue, error } = await okxAdapter.getPortfolio(prices);
+        if (error || currentTotalValue === undefined) return;
 
-        // If this is the first ever run, just save the current state and exit.
-        if (lastPriceTracker.totalPortfolioValue === 0) {
-            await savePriceTracker(currentPriceTracker);
-            await sendDebugMessage("Initialized price tracker.");
+        if (priceTracker.totalPortfolioValue === 0) {
+            priceTracker.totalPortfolioValue = currentTotalValue;
+            assets.forEach(a => {
+                if (a.price) priceTracker.assets[a.asset] = a.price;
+            });
+            await savePriceTracker(priceTracker);
             return;
         }
 
-        // --- Perform Comparisons between last run and this run ---
+        let trackerUpdated = false;
 
         // 1. Check for individual asset movements
         for (const asset of assets) {
             if (asset.asset === 'USDT' || !asset.price) continue;
-            
-            const lastPrice = lastPriceTracker.assets[asset.asset];
-            const currentPrice = currentPriceTracker.assets[asset.asset];
-
-            // Only compare if we have a previous price to compare against
-            if (lastPrice && currentPrice) {
-                const changePercent = ((currentPrice - lastPrice) / lastPrice) * 100;
+            const lastPrice = priceTracker.assets[asset.asset];
+            if (lastPrice) {
+                const changePercent = ((asset.price - lastPrice) / lastPrice) * 100;
                 const threshold = alertSettings.overrides[asset.asset] || alertSettings.global;
-                
                 if (Math.abs(changePercent) >= threshold) {
                     const movementText = changePercent > 0 ? 'صعود' : 'هبوط';
-                    const message = `📈 *تنبيه حركة سعر لأصل\\!* \`${asset.asset}\`\n*الحركة:* ${movementText} بنسبة \`${formatNumber(changePercent)}%\`\n*السعر الحالي:* \`$${formatNumber(asset.price, 4)}\``;
-                    await bot.api.sendMessage(AUTHORIZED_USER_ID, sanitizeMarkdownV2(message), { parse_mode: "MarkdownV2" });
+                    const message = `📈 *تنبيه حركة سعر لأصل!* \`${asset.asset}\`\n*الحركة:* ${movementText} بنسبة \`${formatNumber(changePercent)}%\`\n*السعر الحالي:* \`$${formatNumber(asset.price, 4)}\``;
+                    await bot.api.sendMessage(AUTHORIZED_USER_ID, message, { parse_mode: "Markdown" });
+                    priceTracker.assets[asset.asset] = asset.price; // Update price for this asset
+                    trackerUpdated = true;
                 }
+            } else {
+                priceTracker.assets[asset.asset] = asset.price;
+                trackerUpdated = true;
             }
         }
 
         // 2. Check for total portfolio value movement
-        const lastTotalValue = lastPriceTracker.totalPortfolioValue;
-        if (lastTotalValue > 0 && currentTotalValue > 0) {
+        const lastTotalValue = priceTracker.totalPortfolioValue;
+        if (lastTotalValue > 0) {
             const totalChangePercent = ((currentTotalValue - lastTotalValue) / lastTotalValue) * 100;
             const globalThreshold = alertSettings.global;
 
             if (Math.abs(totalChangePercent) >= globalThreshold) {
                 const movementText = totalChangePercent > 0 ? 'صعود' : 'هبوط';
-                const message = `💼 *تنبيه حركة المحفظة\\!* \n*الحركة:* ${movementText} بنسبة \`${formatNumber(totalChangePercent)}%\`\n*القيمة الحالية:* \`$${formatNumber(currentTotalValue)}\``;
-                await bot.api.sendMessage(AUTHORIZED_USER_ID, sanitizeMarkdownV2(message), { parse_mode: "MarkdownV2" });
+                const message = `💼 *تنبيه حركة المحفظة!* \n*الحركة:* ${movementText} بنسبة \`${formatNumber(totalChangePercent)}%\`\n*القيمة الحالية:* \`$${formatNumber(currentTotalValue)}\``;
+                await bot.api.sendMessage(AUTHORIZED_USER_ID, message, { parse_mode: "Markdown" });
+                priceTracker.totalPortfolioValue = currentTotalValue; // Update total value to prevent re-alerting
+                trackerUpdated = true;
             }
         }
 
-        // --- CRITICAL STEP: Unconditionally save the current state for the next run ---
-        await savePriceTracker(currentPriceTracker);
-
+        if (trackerUpdated) {
+            await savePriceTracker(priceTracker);
+        }
     } catch (e) {
         console.error("CRITICAL ERROR in checkPriceMovements:", e);
     }
