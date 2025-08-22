@@ -15,6 +15,11 @@ const { connectDB, getDB } = require("./database.js");
 // SECTION 0: CONFIGURATION & SETUP
 // =================================================================
 
+// --- Dependencies ---
+const express = require('express');
+const { Telegraf } = require('telegraf');
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+
 // --- Bot Configuration ---
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -30,7 +35,7 @@ const TARGET_CHANNEL_ID = process.env.TARGET_CHANNEL_ID;
 
 // --- Bot & App Initialization ---
 const app = express();
-const bot = new Bot(BOT_TOKEN);
+const bot = new Telegraf(BOT_TOKEN);
 
 // --- State & Cache Variables ---
 let waitingState = null;
@@ -39,7 +44,6 @@ let marketCache = { data: null, ts: 0 };
 // --- AI Setup ---
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
-
 // =================================================================
 // SECTION 1: OKX API ADAPTER & CACHING
 // =================================================================
