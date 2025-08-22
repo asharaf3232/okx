@@ -44,6 +44,7 @@ let marketCache = { data: null, ts: 0 };
 // --- AI Setup ---
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+
 // =================================================================
 // SECTION 1: OKX API ADAPTER & CACHING
 // =================================================================
