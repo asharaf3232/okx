@@ -159,6 +159,8 @@ const getHistoricalPerformance = async (asset) => { try { const history = await 
 const saveVirtualTrade = async (tradeData) => { try { const tradeWithId = { ...tradeData, _id: crypto.randomBytes(16).toString("hex") }; await getCollection("virtualTrades").insertOne(tradeWithId); return tradeWithId; } catch (e) { console.error("Error saving virtual trade:", e); } };
 const getActiveVirtualTrades = async () => { try { return await getCollection("virtualTrades").find({ status: 'active' }).toArray(); } catch (e) { return []; } };
 const updateVirtualTradeStatus = async (tradeId, status, finalPrice) => { try { await getCollection("virtualTrades").updateOne({ _id: tradeId }, { $set: { status: status, closePrice: finalPrice, closedAt: new Date() } }); } catch (e) { console.error(`Error updating virtual trade ${tradeId}:`, e); } };
+
+// --- Simplified Config Helpers ---
 const loadCapital = async () => (await getConfig("capital", { value: 0 })).value;
 const saveCapital = (amount) => saveConfig("capital", { value: amount });
 const loadSettings = async () => await getConfig("settings", { dailySummary: true, autoPostToChannel: false, debugMode: false, dailyReportTime: "22:00" });
@@ -173,35 +175,16 @@ const loadBalanceState = async () => await getConfig("balanceState", {});
 const saveBalanceState = (state) => saveConfig("balanceState", state);
 const loadAlerts = async () => await getConfig("priceAlerts", []);
 const saveAlerts = (alerts) => saveConfig("priceAlerts", alerts);
-const loadAlertSettings = async () => await getConfig("alertSettings", { global: 5, overrides: {} });
+const loadAlertSettings = async () => await getConfig("alertSettings", { global: 0.01, overrides: {} });
 const saveAlertSettings = (settings) => saveConfig("alertSettings", settings);
 const loadPriceTracker = async () => await getConfig("priceTracker", { totalPortfolioValue: 0, assets: {} });
 const savePriceTracker = (tracker) => saveConfig("priceTracker", tracker);
+
+// --- Utility Functions ---
 const formatNumber = (num, decimals = 2) => { const number = parseFloat(num); return isNaN(number) || !isFinite(number) ? (0).toFixed(decimals) : number.toFixed(decimals); };
-function formatSmart(num) {
-    const n = Number(num);
-    if (!isFinite(n)) return "0.00";
-    if (Math.abs(n) >= 1) return n.toFixed(2);
-    if (Math.abs(n) >= 0.01) return n.toFixed(4);
-    if (Math.abs(n) === 0) return "0.00";
-    return n.toPrecision(4);
-}
-const sanitizeMarkdownV2 = (text) => {
-    if (typeof text !== 'string' && typeof text !== 'number') return '';
-    // This is the crucial fix: Escape ALL reserved characters including '.'
-    return String(text).replace(/([_*\[\]()~`>#+\-=|{}.!])/g, '\\$1');
-};
-const sendDebugMessage = async (message) => {
-    const settings = await loadSettings();
-    if (settings.debugMode) {
-        try {
-            const sanitizedMessage = sanitizeMarkdownV2(message);
-            await bot.api.sendMessage(AUTHORIZED_USER_ID, `🐞 *Debug \\(OKX\\):* ${sanitizedMessage}`, { parse_mode: "MarkdownV2" });
-        } catch (e) {
-            console.error("Failed to send debug message:", e);
-        }
-    }
-};
+const sendDebugMessage = async (message) => { const settings = await loadSettings(); if (settings.debugMode) { try { await bot.api.sendMessage(AUTHORIZED_USER_ID, `🐞 *Debug (OKX):* ${message}`, { parse_mode: "Markdown" }); } catch (e) { console.error("Failed to send debug message:", e); } } };
+const sanitizeMarkdownV2 = (text) => { if (!text) return ''; const charsToEscape = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']; let sanitizedText = text; for (const char of charsToEscape) { sanitizedText = sanitizedText.replace(new RegExp('\\' + char, 'g'), '\\' + char); } return sanitizedText; };
+const truncate = (str, maxLength) => str.length > maxLength ? str.substring(0, maxLength) + "..." : str;
 
 // =================================================================
 // SECTION 3: FORMATTING AND MESSAGE FUNCTIONS
