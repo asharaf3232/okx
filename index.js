@@ -432,42 +432,48 @@ async function formatPortfolioMsg(assets, total, capital) {
     return { caption };
 }
 async function formatAdvancedMarketAnalysis(ownedAssets = []) {
-    const prices = await getCachedMarketPrices();
-    if (!prices || prices.error) return `❌ فشل جلب بيانات السوق\\. ${sanitizeMarkdownV2(prices.error || '')}`;
+    const prices = await okxAdapter.getMarketPrices();
+    
     const marketData = Object.entries(prices).map(([instId, data]) => ({ instId, ...data })).filter(d => d.volCcy24h > 10000 && d.change24h !== undefined);
+    
+    // --- NEW: Market Breadth Calculation ---
     const totalCount = marketData.length;
     const gainersCount = marketData.filter(d => d.change24h > 0).length;
     const losersCount = totalCount - gainersCount;
     const gainersPercent = totalCount > 0 ? (gainersCount / totalCount) * 100 : 0;
     const losersPercent = totalCount > 0 ? (losersCount / totalCount) * 100 : 0;
-    let breadthConclusion = "السوق متوازن حاليًا\\.";
+    let breadthConclusion = "السوق متوازن حاليًا.";
     if (gainersPercent > 65) {
-        breadthConclusion = "السوق يظهر قوة شرائية واسعة النطاق\\.";
+        breadthConclusion = "السوق يظهر قوة شرائية واسعة النطاق.";
     } else if (losersPercent > 65) {
-        breadthConclusion = "السوق يظهر ضغطًا بيعيًا واسع النطاق\\.";
+        breadthConclusion = "السوق يظهر ضغطًا بيعيًا واسع النطاق.";
     }
+
     marketData.sort((a, b) => b.change24h - a.change24h);
     const topGainers = marketData.slice(0, 5);
     const topLosers = marketData.slice(-5).reverse();
     marketData.sort((a, b) => b.volCcy24h - a.volCcy24h);
     const highVolume = marketData.slice(0, 5);
     const ownedSymbols = ownedAssets.map(a => a.asset);
-    let msg = `🚀 *تحليل السوق المتقدم \\(OKX\\)* \\| ${sanitizeMarkdownV2(new Date().toLocaleDateString("ar-EG"))}\n`;
-    msg += `━━━━━━━━━━━━━━━━━━━\n📊 *اتساع السوق \\(آخر 24س\\):*\n`;
-    msg += `▫️ *العملات الصاعدة:* 🟢 ${sanitizeMarkdownV2(formatNumber(gainersPercent))}%\n`;
-    msg += `▫️ *العملات الهابطة:* 🔴 ${sanitizeMarkdownV2(formatNumber(losersPercent))}%\n`;
-    msg += `▫️ *الخلاصة:* ${sanitizeMarkdownV2(breadthConclusion)}\\.\n`;
+    
+    let msg = `🚀 *تحليل السوق المتقدم (OKX)* | ${new Date().toLocaleDateString("ar-EG")}\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━\n📊 *اتساع السوق (آخر 24س):*\n`;
+    msg += `▫️ *العملات الصاعدة:* 🟢 \`${formatNumber(gainersPercent)}%\`\n`;
+    msg += `▫️ *العملات الهابطة:* 🔴 \`${formatNumber(losersPercent)}%\`\n`;
+    msg += `▫️ *الخلاصة:* ${breadthConclusion}\n`;
     msg += `━━━━━━━━━━━━━━━━━━━\n\n`;
-    msg += "📈 *أكبر الرابحين \\(24س\\):*\n" + topGainers.map(c => { const symbol = c.instId.split('-')[0]; const ownedMark = ownedSymbols.includes(symbol) ? ' ✅' : ''; return ` \\- \`${c.instId}\`: ${sanitizeMarkdownV2("+" + formatNumber(c.change24h * 100))}%${ownedMark}`; }).join('\n') + "\n\n";
-    msg += "📉 *أكبر الخاسرين \\(24س\\):*\n" + topLosers.map(c => { const symbol = c.instId.split('-')[0]; const ownedMark = ownedSymbols.includes(symbol) ? ' ✅' : ''; return ` \\- \`${c.instId}\`: ${sanitizeMarkdownV2(formatNumber(c.change24h * 100))}%${ownedMark}`; }).join('\n') + "\n\n";
-    msg += "📊 *الأعلى في حجم التداول:*\n" + highVolume.map(c => ` \\- \`${c.instId}\`: ${sanitizeMarkdownV2((c.volCcy24h / 1e6).toFixed(2))}M USDT`).join('\n') + "\n\n";
-    let smartRecommendation = "💡 *توصية:* راقب الأصول ذات حجم التداول المرتفع، فهي غالبًا ما تقود اتجاه السوق\\.";
+    
+    msg += "📈 *أكبر الرابحين (24س):*\n" + topGainers.map(c => { const symbol = c.instId.split('-')[0]; const ownedMark = ownedSymbols.includes(symbol) ? ' ✅' : ''; return ` - \`${c.instId}\`: \`+${formatNumber(c.change24h * 100)}%\`${ownedMark}`; }).join('\n') + "\n\n";
+    msg += "📉 *أكبر الخاسرين (24س):*\n" + topLosers.map(c => { const symbol = c.instId.split('-')[0]; const ownedMark = ownedSymbols.includes(symbol) ? ' ✅' : ''; return ` - \`${c.instId}\`: \`${formatNumber(c.change24h * 100)}%\`${ownedMark}`; }).join('\n') + "\n\n";
+    msg += "📊 *الأعلى في حجم التداول:*\n" + highVolume.map(c => ` - \`${c.instId}\`: \`${(c.volCcy24h / 1e6).toFixed(2)}M\` USDT`).join('\n') + "\n\n";
+    
+    let smartRecommendation = "💡 *توصية:* راقب الأصول ذات حجم التداول المرتفع، فهي غالبًا ما تقود اتجاه السوق.";
     const ownedGainers = topGainers.filter(g => ownedSymbols.includes(g.instId.split('-')[0]));
     const ownedLosers = topLosers.filter(l => ownedSymbols.includes(l.instId.split('-')[0]));
     if (ownedGainers.length > 0) {
-        smartRecommendation = `💡 *توصية ذكية:* عملة *${sanitizeMarkdownV2(ownedGainers[0].instId.split('-')[0])}* التي تملكها ضمن أكبر الرابحين\\. قد تكون فرصة جيدة لتقييم المركز\\.`;
+        smartRecommendation = `💡 *توصية ذكية:* عملة *${ownedGainers[0].instId.split('-')[0]}* التي تملكها ضمن أكبر الرابحين. قد تكون فرصة جيدة لتقييم المركز.`;
     } else if (ownedLosers.length > 0) {
-        smartRecommendation = `💡 *توصية ذكية:* عملة *${sanitizeMarkdownV2(ownedLosers[0].instId.split('-')[0])}* التي تملكها ضمن أكبر الخاسرين\\. قد يتطلب الأمر مراجعة وقف الخسارة أو استراتيجيتك\\.`;
+        smartRecommendation = `💡 *توصية ذكية:* عملة *${ownedLosers[0].instId.split('-')[0]}* التي تملكها ضمن أكبر الخاسرين. قد يتطلب الأمر مراجعة وقف الخسارة أو استراتيجيتك.`;
     }
     msg += `${smartRecommendation}`;
     return msg;
