@@ -389,7 +389,13 @@ async function formatPortfolioMsg(assets, total, capital) {
         dailyPnlText = ` ${dailyEmoji} \`$${dailySign}${formatNumber(dailyPnl)}\` \\(\`${dailySign}${formatNumber(dailyPnlPercent)}%\`\\)`;
     }
     let caption = `🧾 *التقرير التحليلي للمحفظة*\n\n`;
+    
+    // =================================================================
+    // !! هذا هو السطر الأهم الذي يقوم بالإصلاح !!
+    // يتم تمرير التاريخ الذي يحتوي على (/, :, .) عبر الدالة لمعالجته
+    // =================================================================
     caption += `*بتاريخ: ${sanitizeMarkdownV2(new Date().toLocaleString("ar-EG", { timeZone: "Africa/Cairo" }))}*\n`;
+
     const cryptoAssets = assets.filter(a => a.asset !== "USDT" && a.change24h !== undefined);
     if (cryptoAssets.length > 0) {
         cryptoAssets.sort((a, b) => b.change24h - a.change24h);
