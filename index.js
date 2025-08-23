@@ -272,10 +272,65 @@ function formatPrivateCloseReport(details) {
     msg += `━━━━━━━━━━━━━━━━━━━━\n*بتاريخ الإغلاق:* ${sanitizeMarkdownV2(new Date().toLocaleString("ar-EG", { timeZone: "Africa/Cairo" }))}`;
     return msg;
 }
-function formatPublicBuy(details) { const { asset, price, oldTotalValue, tradeValue, oldUsdtValue, newCashPercent } = details; const tradeSizePercent = oldTotalValue > 0 ? (tradeValue / oldTotalValue) * 100 : 0; const cashConsumedPercent = (oldUsdtValue > 0) ? (tradeValue / oldUsdtValue) * 100 : 0; let msg = `*💡 توصية جديدة: بناء مركز في ${sanitizeMarkdownV2(asset)} 🟢*\n━━━━━━━━━━━━━━━━━━━━\n`; msg += `*الأصل:* \`${sanitizeMarkdownV2(asset)}/USDT\`\n`; msg += `*سعر الدخول الحالي:* \`$${sanitizeMarkdownV2(formatSmart(price))}\`\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n*استراتيجية إدارة المحفظة:*\n`; msg += ` ▪️ *حجم الدخول:* تم تخصيص \`${sanitizeMarkdownV2(formatNumber(tradeSizePercent))}%\` من المحفظة لهذه الصفقة\\.\n`; msg += ` ▪️ *استهلاك السيولة:* استهلك هذا الدخول \`${sanitizeMarkdownV2(formatNumber(cashConsumedPercent))}%\` من السيولة النقدية المتاحة\\.\n`; msg += ` ▪️ *السيولة المتبقية:* بعد الصفقة، أصبحت السيولة تشكل \`${sanitizeMarkdownV2(formatNumber(newCashPercent))}%\` من المحفظة\\.\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n*ملاحظات:*\nنرى في هذه المستويات فرصة واعدة\\. المراقبة مستمرة، وسنوافيكم بتحديثات إدارة الصفقة\\.\n`; msg += `#توصية #${sanitizeMarkdownV2(asset)}`; return msg; }
-function formatPublicSell(details) { const { asset, price, amountChange, position } = details; const totalPositionAmountBeforeSale = position.totalAmountBought - (position.totalAmountSold - Math.abs(amountChange)); const soldPercent = totalPositionAmountBeforeSale > 0 ? (Math.abs(amountChange) / totalPositionAmountBeforeSale) * 100 : 0; const partialPnl = (price - position.avgBuyPrice); const partialPnlPercent = position.avgBuyPrice > 0 ? (partialPnl / position.avgBuyPrice) * 100 : 0; let msg = `*⚙️ تحديث التوصية: إدارة مركز ${sanitizeMarkdownV2(asset)} 🟠*\n━━━━━━━━━━━━━━━━━━━━\n`; msg += `*الأصل:* \`${sanitizeMarkdownV2(asset)}/USDT\`\n`; msg += `*سعر البيع الجزئي:* \`$${sanitizeMarkdownV2(formatSmart(price))}\`\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n*استراتيجية إدارة المحفظة:*\n`; msg += ` ▪️ *الإجراء:* تم بيع \`${sanitizeMarkdownV2(formatNumber(soldPercent))}%\` من مركزنا لتأمين الأرباح\\.\n`; msg += ` ▪️ *النتيجة:* ربح محقق على الجزء المباع بنسبة \`${sanitizeMarkdownV2(formatNumber(partialPnlPercent))}%\` 🟢\\.\n`; msg += ` ▪️ *حالة المركز:* لا يزال المركز مفتوحًا بالكمية المتبقية\\.\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n*ملاحظات:*\nخطوة استباقية لإدارة المخاطر وحماية رأس المال\\. نستمر في متابعة الأهداف الأعلى\\.\n`; msg += `#إدارة_مخاطر #${sanitizeMarkdownV2(asset)}`; return msg; }
-function formatPublicClose(details) { const { asset, pnlPercent, durationDays, avgBuyPrice, avgSellPrice } = details; const pnlSign = pnlPercent >= 0 ? '+' : ''; const emoji = pnlPercent >= 0 ? '🟢' : '🔴'; let msg = `*🏆 النتيجة النهائية لتوصية ${sanitizeMarkdownV2(asset)} ✅*\n━━━━━━━━━━━━━━━━━━━━\n`; msg += `*الأصل:* \`${sanitizeMarkdownV2(asset)}/USDT\`\n`; msg += `*الحالة:* **تم إغلاق الصفقة بالكامل\\.**\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n*ملخص أداء التوصية:*\n`; msg += ` ▪️ **متوسط سعر الدخول:** \`$${sanitizeMarkdownV2(formatSmart(avgBuyPrice))}\`\n`; msg += ` ▪️ **متوسط سعر الخروج:** \`$${sanitizeMarkdownV2(formatSmart(avgSellPrice))}\`\n`; msg += ` ▪️ **العائد النهائي على الاستثمار \\(ROI\\):** \`${sanitizeMarkdownV2(pnlSign)}${sanitizeMarkdownV2(formatNumber(pnlPercent))}%\` ${emoji}\n`; msg += ` ▪️ **مدة التوصية:** \`${sanitizeMarkdownV2(formatNumber(durationDays, 1))} يوم\`\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n*الخلاصة:*\n`; if (pnlPercent >= 0) { msg += `صفقة موفقة أثبتت أن الصبر على التحليل يؤتي ثماره\\.\n`; } else { msg += `الخروج بانضباط وفقًا للخطة هو نجاح بحد ذاته\\. نحافظ على رأس المال للفرصة القادمة\\.\n`; } msg += `\nنبارك لمن اتبع التوصية\\. نستعد الآن للبحث عن الفرصة التالية\\.\n`; msg += `#نتائجتوصيات #${sanitizeMarkdownV2(asset)}`; return msg; }
-async function formatPortfolioMsg(assets, total, capital) {
+function formatPublicBuy(details) {
+    const { asset, price, oldTotalValue, tradeValue, oldUsdtValue, newCashPercent } = details;
+    const tradeSizePercent = oldTotalValue > 0 ? (tradeValue / oldTotalValue) * 100 : 0;
+    const cashConsumedPercent = (oldUsdtValue > 0) ? (tradeValue / oldUsdtValue) * 100 : 0;
+    let msg = `*💡 توصية جديدة: بناء مركز في ${sanitizeMarkdownV2(asset)} 🟢*\n━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `*الأصل:* \`${sanitizeMarkdownV2(asset)}/USDT\`\n`;
+    msg += `*سعر الدخول الحالي:* \`$${sanitizeMarkdownV2(formatSmart(price))}\`\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━\n*استراتيجية إدارة المحفظة:*\n`;
+    msg += ` ▪️ *حجم الدخول:* تم تخصيص \`${sanitizeMarkdownV2(formatNumber(tradeSizePercent))}%\` من المحفظة لهذه الصفقة\\.\n`;
+    msg += ` ▪️ *استهلاك السيولة:* استهلك هذا الدخول \`${sanitizeMarkdownV2(formatNumber(cashConsumedPercent))}%\` من السيولة النقدية المتاحة\\.\n`;
+    msg += ` ▪️ *السيولة المتبقية:* بعد الصفقة، أصبحت السيولة تشكل \`${sanitizeMarkdownV2(formatNumber(newCashPercent))}%\` من المحفظة\\.\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━\n*ملاحظات:*\nنرى في هذه المستويات فرصة واعدة\\. المراقبة مستمرة، وسنوافيكم بتحديثات إدارة الصفقة\\.\n`;
+    // الحل الأفضل: استخدام روابط الهاشتاج
+    msg += `[\\#توصية](tg://hashtag?tag=توصية) [\\#${sanitizeMarkdownV2(asset)}](tg://hashtag?tag=${sanitizeMarkdownV2(asset)})`;
+    return msg;
+}
+
+function formatPublicSell(details) {
+    const { asset, price, amountChange, position } = details;
+    const totalPositionAmountBeforeSale = position.totalAmountBought - (position.totalAmountSold - Math.abs(amountChange));
+    const soldPercent = totalPositionAmountBeforeSale > 0 ? (Math.abs(amountChange) / totalPositionAmountBeforeSale) * 100 : 0;
+    const partialPnl = (price - position.avgBuyPrice);
+    const partialPnlPercent = position.avgBuyPrice > 0 ? (partialPnl / position.avgBuyPrice) * 100 : 0;
+    let msg = `*⚙️ تحديث التوصية: إدارة مركز ${sanitizeMarkdownV2(asset)} 🟠*\n━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `*الأصل:* \`${sanitizeMarkdownV2(asset)}/USDT\`\n`;
+    msg += `*سعر البيع الجزئي:* \`$${sanitizeMarkdownV2(formatSmart(price))}\`\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━\n*استراتيجية إدارة المحفظة:*\n`;
+    msg += ` ▪️ *الإجراء:* تم بيع \`${sanitizeMarkdownV2(formatNumber(soldPercent))}%\` من مركزنا لتأمين الأرباح\\.\n`;
+    msg += ` ▪️ *النتيجة:* ربح محقق على الجزء المباع بنسبة \`${sanitizeMarkdownV2(formatNumber(partialPnlPercent))}%\` 🟢\\.\n`;
+    msg += ` ▪️ *حالة المركز:* لا يزال المركز مفتوحًا بالكمية المتبقية\\.\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━\n*ملاحظات:*\nخطوة استباقية لإدارة المخاطر وحماية رأس المال\\. نستمر في متابعة الأهداف الأعلى\\.\n`;
+    // الحل الأفضل: استخدام روابط الهاشتاج
+    msg += `[\\#إدارة\\_مخاطر](tg://hashtag?tag=إدارة_مخاطر) [\\#${sanitizeMarkdownV2(asset)}](tg://hashtag?tag=${sanitizeMarkdownV2(asset)})`;
+    return msg;
+}
+
+function formatPublicClose(details) {
+    const { asset, pnlPercent, durationDays, avgBuyPrice, avgSellPrice } = details;
+    const pnlSign = pnlPercent >= 0 ? '+' : '';
+    const emoji = pnlPercent >= 0 ? '🟢' : '🔴';
+    let msg = `*🏆 النتيجة النهائية لتوصية ${sanitizeMarkdownV2(asset)} ✅*\n━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `*الأصل:* \`${sanitizeMarkdownV2(asset)}/USDT\`\n`;
+    msg += `*الحالة:* **تم إغلاق الصفقة بالكامل\\.**\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━\n*ملخص أداء التوصية:*\n`;
+    msg += ` ▪️ **متوسط سعر الدخول:** \`$${sanitizeMarkdownV2(formatSmart(avgBuyPrice))}\`\n`;
+    msg += ` ▪️ **متوسط سعر الخروج:** \`$${sanitizeMarkdownV2(formatSmart(avgSellPrice))}\`\n`;
+    msg += ` ▪️ **العائد النهائي على الاستثمار \\(ROI\\):** \`${sanitizeMarkdownV2(pnlSign)}${sanitizeMarkdownV2(formatNumber(pnlPercent))}%\` ${emoji}\n`;
+    msg += ` ▪️ **مدة التوصية:** \`${sanitizeMarkdownV2(formatNumber(durationDays, 1))} يوم\`\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━\n*الخلاصة:*\n`;
+    if (pnlPercent >= 0) {
+        msg += `صفقة موفقة أثبتت أن الصبر على التحليل يؤتي ثماره\\.\n`;
+    } else {
+        msg += `الخروج بانضباط وفقًا للخطة هو نجاح بحد ذاته\\. نحافظ على رأس المال للفرصة القادمة\\.\n`;
+    }
+    msg += `\nنبارك لمن اتبع التوصية\\. نستعد الآن للبحث عن الفرصة التالية\\.\n`;
+    // الحل الأفضل: استخدام روابط الهاشتاج
+    msg += `[\\#نتائجتوصيات](tg://hashtag?tag=نتائجتوصيات) [\\#${sanitizeMarkdownV2(asset)}](tg://hashtag?tag=${sanitizeMarkdownV2(asset)})`;
+    return msg;
+}async function formatPortfolioMsg(assets, total, capital) {
     const positions = await loadPositions();
     const usdtAsset = assets.find(a => a.asset === "USDT") || { value: 0 };
     const cashPercent = total > 0 ? (usdtAsset.value / total) * 100 : 0;
