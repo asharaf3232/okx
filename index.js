@@ -1357,8 +1357,8 @@ async function handleWaitingState(ctx, state, text) {
 // =================================================================
 // SECTION 9: SERVER AND BOT INITIALIZATION (Telegraf Conversion with Fix)
 // =================================================================
+// This endpoint is for the hosting service's health check.
 app.get("/", (req, res) => res.status(200).send("Bot is alive and webhook is listening!"));
-
 
 async function startBot() {
     try {
@@ -1368,19 +1368,13 @@ async function startBot() {
         if (process.env.NODE_ENV === "production") {
             console.log("Starting bot in production mode (webhook)...");
             
-            // CRITICAL FIX: The WEBHOOK_URL must be set in your production environment variables.
             if (!WEBHOOK_URL) {
                 console.error("FATAL: WEBHOOK_URL environment variable is not set.");
                 throw new Error("WEBHOOK_URL environment variable must be set for the bot to work in production mode.");
             }
 
-            // A secret path is recommended for security. Telegraf can generate one.
             const secretPath = `/telegraf/${bot.secretPathComponent()}`;
-
-            // Use the webhook callback middleware on the secret path
             app.use(bot.webhookCallback(secretPath));
-            
-            // Set the webhook on Telegram's side to point to your server
             await bot.telegram.setWebhook(`${WEBHOOK_URL}${secretPath}`);
             
             app.listen(PORT, () => {
@@ -1388,7 +1382,6 @@ async function startBot() {
             });
 
         } else {
-            // Polling mode for development
             console.log("Starting bot in development mode (polling)...");
             bot.launch({ dropPendingUpdates: true });
         }
@@ -1412,7 +1405,7 @@ async function startBot() {
         // Start real-time monitoring
         connectToOKXSocket();
 
-        await bot.telegram.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v144\\.1 \\- Webhook Fix\\)*\n\n\\- تم الانتقال إلى مكتبة Telegraf لضمان استقرار أعلى\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
+        await bot.telegram.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v144\\.2 \\- Health Check Fix\\)*\n\n\\- تم إصلاح فحص الصحة لضمان استقرار التشغيل\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
 
     } catch (e) {
         console.error("FATAL: Could not start the bot.", e);
