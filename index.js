@@ -1,5 +1,5 @@
 // =================================================================
-// Advanced Analytics Bot - v144.0 (Telegraf Migration)
+// Advanced Analytics Bot - v144.1 (Webhook Fix & Validation)
 // =================================================================
 // --- IMPORTS ---
 const express = require("express");
@@ -28,7 +28,8 @@ const OKX_CONFIG = {
 const PORT = process.env.PORT || 3000;
 const AUTHORIZED_USER_ID = parseInt(process.env.AUTHORIZED_USER_ID);
 const TARGET_CHANNEL_ID = process.env.TARGET_CHANNEL_ID;
-const WEBHOOK_URL = process.env.WEBHOOK_URL; // Required for production
+// This environment variable IS REQUIRED for production webhook to work
+const WEBHOOK_URL = process.env.WEBHOOK_URL; 
 
 // --- Bot & App Initialization ---
 const app = express();
@@ -230,7 +231,6 @@ const sendDebugMessage = async (message) => {
     if (settings.debugMode) {
         try {
             const sanitizedMessage = sanitizeMarkdownV2(message);
-            // Telegraf: API calls are on bot.telegram
             await bot.telegram.sendMessage(AUTHORIZED_USER_ID, `🐞 *Debug \\(OKX\\):* ${sanitizedMessage}`, { parse_mode: "MarkdownV2" });
         } catch (e) {
             console.error("Failed to send debug message:", e);
@@ -239,7 +239,7 @@ const sendDebugMessage = async (message) => {
 };
 
 // =================================================================
-// SECTION 3: FORMATTING AND MESSAGE FUNCTIONS (Unchanged logic, only sanitizeMarkdownV2 is more robust)
+// SECTION 3: FORMATTING AND MESSAGE FUNCTIONS (Unchanged logic)
 // =================================================================
 function formatClosedTradeReview(trade, currentPrice) { const { asset, avgBuyPrice, avgSellPrice, quantity, pnl: actualPnl, pnlPercent: actualPnlPercent } = trade; let msg = `*🔍 مراجعة صفقة مغلقة \\| ${sanitizeMarkdownV2(asset)}*\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n`; msg += `*ملاحظة: هذا تحليل "ماذا لو" لصفقة مغلقة، ولا يؤثر على محفظتك الحالية\\.*\n\n`; msg += `*ملخص الأسعار الرئيسي:*\n`; msg += `  \\- 💵 *سعر الشراء الأصلي:* \`$${sanitizeMarkdownV2(formatSmart(avgBuyPrice))}\`\n`; msg += `  \\- ✅ *سعر الإغلاق الفعلي:* \`$${sanitizeMarkdownV2(formatSmart(avgSellPrice))}\`\n`; msg += `  \\- 📈 *السعر الحالي للسوق:* \`$${sanitizeMarkdownV2(formatSmart(currentPrice))}\`\n\n`; const actualPnlSign = actualPnl >= 0 ? '+' : ''; const actualEmoji = actualPnl >= 0 ? '🟢' : '🔴'; msg += `*الأداء الفعلي للصفقة \\(عند الإغلاق\\):*\n`; msg += `  \\- *النتيجة:* \`${sanitizeMarkdownV2(actualPnlSign)}${sanitizeMarkdownV2(formatNumber(actualPnl))}\` ${actualEmoji}\n`; msg += `  \\- *نسبة العائد:* \`${sanitizeMarkdownV2(actualPnlSign)}${sanitizeMarkdownV2(formatNumber(actualPnlPercent))}%\`\n\n`; const hypotheticalPnl = (currentPrice - avgBuyPrice) * quantity; const hypotheticalPnlPercent = (avgBuyPrice > 0) ? (hypotheticalPnl / (avgBuyPrice * quantity)) * 100 : 0; const hypotheticalPnlSign = hypotheticalPnl >= 0 ? '+' : ''; const hypotheticalEmoji = hypotheticalPnl >= 0 ? '🟢' : '🔴'; msg += `*الأداء الافتراضي \\(لو بقيت الصفقة مفتوحة\\):*\n`; msg += `  \\- *النتيجة الحالية:* \`${sanitizeMarkdownV2(hypotheticalPnlSign)}${sanitizeMarkdownV2(formatNumber(hypotheticalPnl))}\` ${hypotheticalEmoji}\n`; msg += `  \\- *نسبة العائد الحالية:* \`${sanitizeMarkdownV2(hypotheticalPnlSign)}${sanitizeMarkdownV2(formatNumber(hypotheticalPnlPercent))}%\`\n\n`; const priceChangeSinceClose = currentPrice - avgSellPrice; const priceChangePercent = (avgSellPrice > 0) ? (priceChangeSinceClose / avgSellPrice) * 100 : 0; const changeSign = priceChangeSinceClose >= 0 ? '⬆️' : '⬇️'; msg += `*تحليل قرار الخروج:*\n`; msg += `  \\- *حركة السعر منذ الإغلاق:* \`${sanitizeMarkdownV2(formatNumber(priceChangePercent))}%\` ${changeSign}\n`; if (priceChangeSinceClose > 0) { msg += `  \\- *الخلاصة:* 📈 لقد واصل السعر الصعود بعد خروجك\\. كانت هناك فرصة لتحقيق ربح أكبر\\.\n`; } else { msg += `  \\- *الخلاصة:* ✅ لقد كان قرارك بالخروج صائبًا، حيث انخفض السعر بعد ذلك وتجنبت خسارة أو تراجع في الأرباح\\.\n`; } return msg; }
 function formatPrivateBuy(details) { const { asset, price, amountChange, tradeValue, oldTotalValue, newAssetWeight, newUsdtValue, newCashPercent } = details; const tradeSizePercent = oldTotalValue > 0 ? (tradeValue / oldTotalValue) * 100 : 0; let msg = `*مراقبة الأصول 🔬:*\n**عملية استحواذ جديدة 🟢**\n━━━━━━━━━━━━━━━━━━━━\n`; msg += `🔸 **الأصل المستهدف:** \`${sanitizeMarkdownV2(asset)}/USDT\`\n`; msg += `🔸 **نوع العملية:** تعزيز مركز / بناء مركز جديد\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n*تحليل الصفقة:*\n`; msg += ` ▪️ **سعر التنفيذ:** \`$${sanitizeMarkdownV2(formatSmart(price))}\`\n`; msg += ` ▪️ **الكمية المضافة:** \`${sanitizeMarkdownV2(formatNumber(Math.abs(amountChange), 6))}\`\n`; msg += ` ▪️ **التكلفة الإجمالية للصفقة:** \`$${sanitizeMarkdownV2(formatNumber(tradeValue))}\`\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n*التأثير على هيكل المحفظة:*\n`; msg += ` ▪️ **حجم الصفقة من إجمالي المحفظة:** \`${sanitizeMarkdownV2(formatNumber(tradeSizePercent))}%\`\n`; msg += ` ▪️ **الوزن الجديد للأصل:** \`${sanitizeMarkdownV2(formatNumber(newAssetWeight))}%\`\n`; msg += ` ▪️ **السيولة المتبقية \\(USDT\\):** \`$${sanitizeMarkdownV2(formatNumber(newUsdtValue))}\`\n`; msg += ` ▪️ **مؤشر السيولة الحالي:** \`${sanitizeMarkdownV2(formatNumber(newCashPercent))}%\`\n`; msg += `━━━━━━━━━━━━━━━━━━━━\n*بتاريخ:* ${sanitizeMarkdownV2(new Date().toLocaleString("ar-EG", { timeZone: "Africa/Cairo" }))}`; return msg; }
@@ -436,7 +436,7 @@ async function formatAdvancedMarketAnalysis(ownedAssets = []) {
     let msg = `🚀 *تحليل السوق المتقدم \\(OKX\\)* \\| ${sanitizeMarkdownV2(new Date().toLocaleDateString("ar-EG"))}\n`;
     msg += `━━━━━━━━━━━━━━━━━━━\n📊 *اتساع السوق \\(آخر 24س\\):*\n`;
     msg += `▫️ *العملات الصاعدة:* 🟢 \`${sanitizeMarkdownV2(formatNumber(gainersPercent))}%\`\n`;
-    msg += `▫️ *العملات الهابطة:* � \`${sanitizeMarkdownV2(formatNumber(losersPercent))}%\`\n`;
+    msg += `▫️ *العملات الهابطة:* 🔴 \`${sanitizeMarkdownV2(formatNumber(losersPercent))}%\`\n`;
     msg += `▫️ *الخلاصة:* ${sanitizeMarkdownV2(breadthConclusion)}\n`;
     msg += `━━━━━━━━━━━━━━━━━━━\n\n`;
     
@@ -756,7 +756,6 @@ async function monitorBalanceChanges() {
             
             const sendMessageSafely = async (chatId, message, extra = {}) => {
                 try {
-                    // Telegraf: API calls are on bot.telegram
                     await bot.telegram.sendMessage(chatId, message, { parse_mode: "MarkdownV2", ...extra });
                 } catch (e) {
                     console.error(`Failed to send message to chat ${chatId}:`, e.message);
@@ -785,7 +784,6 @@ async function monitorBalanceChanges() {
                     await sendMessageSafely(TARGET_CHANNEL_ID, publicMessage);
                     await sendMessageSafely(AUTHORIZED_USER_ID, privateMessage);
                 } else {
-                    // Telegraf: Inline keyboard format changed
                     const confirmationKeyboard = Markup.inlineKeyboard([
                         [Markup.button.callback("✅ نعم، انشر التقرير", "publish_report")],
                         [Markup.button.callback("❌ لا، تجاهل", "ignore_report")]
@@ -876,7 +874,6 @@ async function generateAndSendCumulativeReport(ctx, asset) { try { const trades 
 // =================================================================
 // SECTION 6: BOT KEYBOARDS & MENUS (Telegraf Conversion)
 // =================================================================
-// Telegraf: Keyboard format changed
 const mainKeyboard = Markup.keyboard([
     ["📊 عرض المحفظة", "📈 أداء المحفظة"],
     ["🚀 تحليل السوق", "💡 توصية افتراضية"],
@@ -885,7 +882,6 @@ const mainKeyboard = Markup.keyboard([
     ["🧮 حاسبة الربح والخسارة", "⚙️ الإعدادات"]
 ]).resize();
 
-// Telegraf: InlineKeyboard format changed
 const virtualTradeKeyboard = Markup.inlineKeyboard([
     [Markup.button.callback("➕ إضافة توصية جديدة", "add_virtual_trade")],
     [Markup.button.callback("📈 متابعة التوصيات الحية", "track_virtual_trades")]
@@ -898,21 +894,19 @@ const aiKeyboard = Markup.inlineKeyboard([
 
 async function sendSettingsMenu(ctx) { 
     const settings = await loadSettings(); 
-    // Telegraf: InlineKeyboard format changed
     const settingsKeyboard = Markup.inlineKeyboard([
         [Markup.button.callback("💰 تعيين رأس المال", "set_capital"), Markup.button.callback("💼 عرض المراكز المفتوحة", "view_positions")],
         [Markup.button.callback("🚨 إدارة تنبيهات الحركة", "manage_movement_alerts"), Markup.button.callback("🗑️ حذف تنبيه سعر", "delete_alert")],
         [Markup.button.callback(`📰 الملخص اليومي: ${settings.dailySummary ? '✅' : '❌'}`, "toggle_summary"), Markup.button.callback(`🚀 النشر للقناة: ${settings.autoPostToChannel ? '✅' : '❌'}`, "toggle_autopost")],
-        [Markup.button.callback(`🐞 وضع التشخيص: ${settings.debugMode ? '✅' : '❌'}`, "toggle_debug"), Markup.button.callback("📊 إرسال تقرير النسخ", "send_daily_report")],
+        [Markup.button.callback(`🐞 وضع التشخيص: ${settings.debugMode ? '✅' : '❌'}`, "toggle_debug"), Markup.button.callback("� إرسال تقرير النسخ", "send_daily_report")],
         [Markup.button.callback("🔥 حذف جميع البيانات 🔥", "delete_all_data")]
     ]);
     const text = "⚙️ *لوحة التحكم والإعدادات الرئيسية*"; 
     try { 
-        // Telegraf: Check if it's a callback query to use editMessageText
         if (ctx.callbackQuery) { 
-            await ctx.editMessageText(text, { parse_mode: "MarkdownV2", reply_markup: settingsKeyboard.reply_markup }); 
+            await ctx.editMessageText(text, { parse_mode: "MarkdownV2", ...settingsKeyboard }); 
         } else { 
-            await ctx.reply(text, { parse_mode: "MarkdownV2", reply_markup: settingsKeyboard.reply_markup }); 
+            await ctx.reply(text, { parse_mode: "MarkdownV2", ...settingsKeyboard }); 
         } 
     } catch(e) { 
         console.error("Error sending settings menu:", e); 
@@ -926,7 +920,7 @@ async function sendMovementAlertsMenu(ctx) {
         [Markup.button.callback("📊 تعديل النسبة العامة", "set_global_alert"), Markup.button.callback("💎 تعديل نسبة عملة", "set_coin_alert")],
         [Markup.button.callback("🔙 العودة للإعدادات", "back_to_settings")]
     ]); 
-    await ctx.editMessageText(text, { parse_mode: "MarkdownV2", reply_markup: keyboard.reply_markup }); 
+    await ctx.editMessageText(text, { parse_mode: "MarkdownV2", ...keyboard }); 
 }
 
 // =================================================================
@@ -943,7 +937,6 @@ bot.use(async (ctx, next) => {
 });
 
 // --- Command Handlers ---
-// Telegraf: bot.command('start', ...) becomes bot.start(...)
 bot.start((ctx) => {
     const welcomeMessage = `🤖 *أهلاً بك في بوت التحليل المتكامل لمنصة OKX\\.*\n\n*اضغط على الأزرار أدناه للبدء\\!*`;
     ctx.reply(welcomeMessage, { parse_mode: "MarkdownV2", ...mainKeyboard });
@@ -1000,13 +993,12 @@ bot.on("text", async (ctx) => {
         waitingState = null; // Clear state before processing
         await handleWaitingState(ctx, state, ctx.message.text);
     }
-    // Note: bot.hears will catch menu items first. This handler is now primarily for waitingState.
 });
 
 // --- Callback Query Handlers using bot.action ---
-bot.action(/ai_.+/, handleAiActions); // Regex for all AI actions
-bot.action(/review_trade_.+/, handleReviewTradeAction); // Regex for trade reviews
-bot.action(/chart_.+/, handleChartAction); // Regex for charts
+bot.action(/ai_.+/, handleAiActions); 
+bot.action(/review_trade_.+/, handleReviewTradeAction);
+bot.action(/chart_.+/, handleChartAction);
 bot.action(["publish_report", "ignore_report"], handlePublishAction);
 bot.action(/add_virtual_trade|track_virtual_trades/, handleVirtualTradeActions);
 bot.action(/set_capital|back_to_settings|manage_movement_alerts|set_global_alert|set_coin_alert|view_positions|delete_alert|toggle_summary|toggle_autopost|toggle_debug|send_daily_report|delete_all_data/, handleSettingsActions);
@@ -1024,7 +1016,6 @@ async function handlePortfolioRequest(ctx) {
         const { assets, total, error } = await okxAdapter.getPortfolio(prices);
         if (error) throw new Error(error);
         const { caption } = await formatPortfolioMsg(assets, total, capital);
-        // Telegraf: Use ctx.editMessageText
         await ctx.telegram.editMessageText(ctx.chat.id, loadingMessage.message_id, undefined, caption, { parse_mode: "MarkdownV2" });
     } catch (e) {
         console.error(`Error in handlePortfolioRequest:`, e);
@@ -1084,7 +1075,6 @@ async function handleQuickStatsRequest(ctx) {
 }
 
 async function handleAiActions(ctx) {
-    // Telegraf: answerCbQuery and data is in ctx.match[0] for regex
     await ctx.answerCbQuery();
     const data = ctx.match[0];
     try {
@@ -1135,7 +1125,7 @@ async function handleReviewTradeAction(ctx) {
 async function handleChartAction(ctx) {
     await ctx.answerCbQuery();
     const period = ctx.match[0].split('_')[1];
-    await ctx.editMessageText("⏳ جاري إنشاء تقرير الأداء المتقدم\\.\\.\\.");
+    const loadingMessage = await ctx.editMessageText("⏳ جاري إنشاء تقرير الأداء المتقدم\\.\\.\\.");
     try {
         let history, periodLabel, bar, limit;
         if (period === '24h') { history = await loadHourlyHistory(); periodLabel = "آخر 24 ساعة"; bar = '1H'; limit = 24; }
@@ -1153,7 +1143,7 @@ async function handleChartAction(ctx) {
         await ctx.deleteMessage();
     } catch (e) {
         console.error(`Error in handleChartAction for period "${period}":`, e);
-        await ctx.editMessageText(`❌ حدث خطأ: ${sanitizeMarkdownV2(e.message)}`, { parse_mode: "MarkdownV2"});
+        await ctx.telegram.editMessageText(ctx.chat.id, loadingMessage.message_id, undefined, `❌ حدث خطأ: ${sanitizeMarkdownV2(e.message)}`, { parse_mode: "MarkdownV2"});
     }
 }
 
@@ -1365,7 +1355,7 @@ async function handleWaitingState(ctx, state, text) {
 }
 
 // =================================================================
-// SECTION 9: SERVER AND BOT INITIALIZATION (Telegraf Conversion)
+// SECTION 9: SERVER AND BOT INITIALIZATION (Telegraf Conversion with Fix)
 // =================================================================
 app.get("/healthcheck", (req, res) => res.status(200).send("OK"));
 
@@ -1376,10 +1366,32 @@ async function startBot() {
 
         if (process.env.NODE_ENV === "production") {
             console.log("Starting bot in production mode (webhook)...");
-            // Telegraf: Set webhook
-            app.use(await bot.createWebhook({ domain: WEBHOOK_URL, path: '/telegram-webhook' }));
-        }
+            
+            // CRITICAL FIX: The WEBHOOK_URL must be set in your production environment variables.
+            if (!WEBHOOK_URL) {
+                console.error("FATAL: WEBHOOK_URL environment variable is not set.");
+                throw new Error("WEBHOOK_URL environment variable must be set for the bot to work in production mode.");
+            }
 
+            // A secret path is recommended for security. Telegraf can generate one.
+            const secretPath = `/telegraf/${bot.secretPathComponent()}`;
+
+            // Use the webhook callback middleware on the secret path
+            app.use(bot.webhookCallback(secretPath));
+            
+            // Set the webhook on Telegram's side to point to your server
+            await bot.telegram.setWebhook(`${WEBHOOK_URL}${secretPath}`);
+            
+            app.listen(PORT, () => {
+                console.log(`Server listening on port ${PORT} and handling webhooks at ${secretPath}`);
+            });
+
+        } else {
+            // Polling mode for development
+            console.log("Starting bot in development mode (polling)...");
+            bot.launch({ dropPendingUpdates: true });
+        }
+        
         console.log("Bot is now fully operational for OKX.");
 
         // Start background jobs
@@ -1398,18 +1410,8 @@ async function startBot() {
         
         // Start real-time monitoring
         connectToOKXSocket();
-        
-        // Telegraf: Use bot.launch() for polling or to start webhook server
-        if (process.env.NODE_ENV === "production") {
-             app.listen(PORT, () => {
-                console.log(`Server listening on port ${PORT}`);
-            });
-        } else {
-            console.log("Starting bot in development mode (polling)...");
-            bot.launch({ dropPendingUpdates: true });
-        }
 
-        await bot.telegram.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v144\\.0 \\- Telegraf Migration\\)*\n\n\\- تم الانتقال إلى مكتبة Telegraf لضمان استقرار أعلى\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
+        await bot.telegram.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v144\\.1 \\- Webhook Fix\\)*\n\n\\- تم الانتقال إلى مكتبة Telegraf لضمان استقرار أعلى\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
 
     } catch (e) {
         console.error("FATAL: Could not start the bot.", e);
