@@ -1,5 +1,5 @@
 // =================================================================
-// Advanced Analytics Bot - v144.1 (Webhook Fix & Validation)
+// Advanced Analytics Bot - v144.2 (Health Check Fix)
 // =================================================================
 // --- IMPORTS ---
 const express = require("express");
@@ -898,7 +898,7 @@ async function sendSettingsMenu(ctx) {
         [Markup.button.callback("💰 تعيين رأس المال", "set_capital"), Markup.button.callback("💼 عرض المراكز المفتوحة", "view_positions")],
         [Markup.button.callback("🚨 إدارة تنبيهات الحركة", "manage_movement_alerts"), Markup.button.callback("🗑️ حذف تنبيه سعر", "delete_alert")],
         [Markup.button.callback(`📰 الملخص اليومي: ${settings.dailySummary ? '✅' : '❌'}`, "toggle_summary"), Markup.button.callback(`🚀 النشر للقناة: ${settings.autoPostToChannel ? '✅' : '❌'}`, "toggle_autopost")],
-        [Markup.button.callback(`🐞 وضع التشخيص: ${settings.debugMode ? '✅' : '❌'}`, "toggle_debug"), Markup.button.callback("� إرسال تقرير النسخ", "send_daily_report")],
+        [Markup.button.callback(`🐞 وضع التشخيص: ${settings.debugMode ? '✅' : '❌'}`, "toggle_debug"), Markup.button.callback("📊 إرسال تقرير النسخ", "send_daily_report")],
         [Markup.button.callback("🔥 حذف جميع البيانات 🔥", "delete_all_data")]
     ]);
     const text = "⚙️ *لوحة التحكم والإعدادات الرئيسية*"; 
