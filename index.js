@@ -1476,9 +1476,3 @@ startBot();
 // Enable graceful stop
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
-"
-
-I want you to make a change to the code in the Canvas "OKX Bot (Final Stability Fix)".
-
-Here are the instructions for the change:
-I have selected the code from line 1 to line 1500 in the Canvas "OKX Bot (Final Stability Fix)". I want you to change the format of the date in the `handleReviewTradesRequest` function. Instead of using `toLocaleDateString('ar-EG')`, use `toLocaleDateString('en-GB')`. This will format the date as DD/MM/YY�
