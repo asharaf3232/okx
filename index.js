@@ -1357,7 +1357,8 @@ async function handleWaitingState(ctx, state, text) {
 // =================================================================
 // SECTION 9: SERVER AND BOT INITIALIZATION (Telegraf Conversion with Fix)
 // =================================================================
-app.get("/healthcheck", (req, res) => res.status(200).send("OK"));
+app.get("/", (req, res) => res.status(200).send("Bot is alive and webhook is listening!"));
+
 
 async function startBot() {
     try {
