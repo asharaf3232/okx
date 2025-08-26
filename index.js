@@ -1,5 +1,5 @@
 // =================================================================
-// Advanced Analytics Bot - v145.0 (Automatic Technical Alerts)
+// Advanced Analytics Bot - v143.6 (Robust Sanitization)
 // =================================================================
 // --- IMPORTS ---
 const express = require("express");
@@ -10,10 +10,6 @@ const WebSocket = require('ws');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 require("dotenv").config();
 const { connectDB, getDB } = require("./database.js");
-const technicalIndicators = require('technicalindicators');
-const fs = require('fs');
-const path = require('path');
-
 
 // =================================================================
 // SECTION 0: CONFIGURATION & SETUP
@@ -31,7 +27,6 @@ const OKX_CONFIG = {
 const PORT = process.env.PORT || 3000;
 const AUTHORIZED_USER_ID = parseInt(process.env.AUTHORIZED_USER_ID);
 const TARGET_CHANNEL_ID = process.env.TARGET_CHANNEL_ID;
-const BACKUP_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
 // --- Bot & App Initialization ---
 const app = express();
@@ -182,7 +177,7 @@ const updateVirtualTradeStatus = async (tradeId, status, finalPrice) => { try { 
 // --- Simplified Config Helpers ---
 const loadCapital = async () => (await getConfig("capital", { value: 0 })).value;
 const saveCapital = (amount) => saveConfig("capital", { value: amount });
-const loadSettings = async () => await getConfig("settings", { dailySummary: true, autoPostToChannel: false, debugMode: false, dailyReportTime: "22:00", technicalPatternAlerts: true });
+const loadSettings = async () => await getConfig("settings", { dailySummary: true, autoPostToChannel: false, debugMode: false, dailyReportTime: "22:00" });
 const saveSettings = (settings) => saveConfig("settings", settings);
 const loadPositions = async () => await getConfig("positions", {});
 const savePositions = (positions) => saveConfig("positions", positions);
@@ -198,10 +193,6 @@ const loadAlertSettings = async () => await getConfig("alertSettings", { global:
 const saveAlertSettings = (settings) => saveConfig("alertSettings", settings);
 const loadPriceTracker = async () => await getConfig("priceTracker", { totalPortfolioValue: 0, assets: {} });
 const savePriceTracker = (tracker) => saveConfig("priceTracker", tracker);
-// *** NEW: Helper for technical alerts state ***
-const loadTechnicalAlertsState = async () => await getConfig("technicalAlertsState", {});
-const saveTechnicalAlertsState = (state) => saveConfig("technicalAlertsState", state);
-
 
 // --- Utility Functions ---
 const formatNumber = (num, decimals = 2) => { const number = parseFloat(num); return isNaN(number) || !isFinite(number) ? (0).toFixed(decimals) : number.toFixed(decimals); };
@@ -214,6 +205,13 @@ function formatSmart(num) {
     return n.toPrecision(4);
 }
 
+/**
+ * ✅ **CRITICAL FIX FUNCTION V2**
+ * This function escapes special characters in a string to make it safe for Telegram's MarkdownV2 parser.
+ * This new version is more explicit and robust to prevent parsing errors.
+ * @param {string | number} text The text to sanitize.
+ * @returns {string} The sanitized text.
+ */
 const sanitizeMarkdownV2 = (text) => {
     if (typeof text !== 'string' && typeof text !== 'number') return '';
     return String(text)
@@ -241,6 +239,7 @@ const sendDebugMessage = async (message) => {
     const settings = await loadSettings();
     if (settings.debugMode) {
         try {
+            // We sanitize the debug message itself to avoid errors in sending debug info
             const sanitizedMessage = sanitizeMarkdownV2(message);
             await bot.api.sendMessage(AUTHORIZED_USER_ID, `🐞 *Debug \\(OKX\\):* ${sanitizedMessage}`, { parse_mode: "MarkdownV2" });
         } catch (e) {
@@ -248,84 +247,6 @@ const sendDebugMessage = async (message) => {
         }
     }
 };
-
-// --- Backup & Restore Functions (NEW) ---
-async function createBackup() {
-    try {
-        const timestamp = new Date().toISOString().replace(/:/g, '-');
-        const backupDir = path.join(__dirname, 'backups');
-        if (!fs.existsSync(backupDir)) {
-            fs.mkdirSync(backupDir, { recursive: true });
-        }
-
-        const backupData = {
-            settings: await loadSettings(),
-            positions: await loadPositions(),
-            dailyHistory: await loadHistory(),
-            hourlyHistory: await loadHourlyHistory(),
-            balanceState: await loadBalanceState(),
-            priceAlerts: await loadAlerts(),
-            alertSettings: await loadAlertSettings(),
-            priceTracker: await loadPriceTracker(),
-            capital: { value: await loadCapital() },
-            virtualTrades: await getCollection("virtualTrades").find({}).toArray(),
-            tradeHistory: await getCollection("tradeHistory").find({}).toArray(),
-            technicalAlertsState: await loadTechnicalAlertsState(), // *** NEW: Backup technical state ***
-            timestamp
-        };
-
-        const backupPath = path.join(backupDir, `backup-${timestamp}.json`);
-        fs.writeFileSync(backupPath, JSON.stringify(backupData, null, 2));
-
-        const files = fs.readdirSync(backupDir).filter(file => file.startsWith('backup-')).sort().reverse();
-        if (files.length > 10) {
-            for (let i = 10; i < files.length; i++) {
-                fs.unlinkSync(path.join(backupDir, files[i]));
-            }
-        }
-        return { success: true, path: backupPath };
-    } catch (error) {
-        console.error("Error creating backup:", error);
-        return { success: false, error: error.message };
-    }
-}
-
-async function restoreFromBackup(backupFile) {
-    try {
-        const backupPath = path.join(__dirname, 'backups', backupFile);
-        if (!fs.existsSync(backupPath)) {
-            return { success: false, error: "ملف النسخة الاحتياطية غير موجود" };
-        }
-        const backupData = JSON.parse(fs.readFileSync(backupPath, 'utf8'));
-
-        await saveSettings(backupData.settings);
-        await savePositions(backupData.positions);
-        await saveHistory(backupData.dailyHistory);
-        await saveHourlyHistory(backupData.hourlyHistory);
-        await saveBalanceState(backupData.balanceState);
-        await saveAlerts(backupData.priceAlerts);
-        await saveAlertSettings(backupData.alertSettings);
-        await savePriceTracker(backupData.priceTracker);
-        await saveCapital(backupData.capital.value);
-        if (backupData.technicalAlertsState) { // *** NEW: Restore technical state ***
-            await saveTechnicalAlertsState(backupData.technicalAlertsState);
-        }
-
-        if (backupData.virtualTrades) {
-            await getCollection("virtualTrades").deleteMany({});
-            await getCollection("virtualTrades").insertMany(backupData.virtualTrades);
-        }
-        if (backupData.tradeHistory) {
-            await getCollection("tradeHistory").deleteMany({});
-            await getCollection("tradeHistory").insertMany(backupData.tradeHistory);
-        }
-
-        return { success: true };
-    } catch (error) {
-        console.error("Error restoring from backup:", error);
-        return { success: false, error: error.message };
-    }
-}
 
 
 // =================================================================
@@ -368,7 +289,7 @@ function formatPublicBuy(details) {
     const { asset, price, oldTotalValue, tradeValue, oldUsdtValue, newCashPercent } = details;
     const tradeSizePercent = oldTotalValue > 0 ? (tradeValue / oldTotalValue) * 100 : 0;
     const cashConsumedPercent = (oldUsdtValue > 0) ? (tradeValue / oldUsdtValue) * 100 : 0;
-    let msg = `*💡 توصية جديدة: بناء مركز في ${sanitizeMarkdownV2(asset)} �*\n━━━━━━━━━━━━━━━━━━━━\n`;
+    let msg = `*💡 توصية جديدة: بناء مركز في ${sanitizeMarkdownV2(asset)} 🟢*\n━━━━━━━━━━━━━━━━━━━━\n`;
     msg += `*الأصل:* \`${sanitizeMarkdownV2(asset)}/USDT\`\n`;
     msg += `*سعر الدخول الحالي:* \`$${sanitizeMarkdownV2(formatSmart(price))}\`\n`;
     msg += `━━━━━━━━━━━━━━━━━━━━\n*استراتيجية إدارة المحفظة:*\n`;
@@ -376,6 +297,7 @@ function formatPublicBuy(details) {
     msg += ` ▪️ *استهلاك السيولة:* استهلك هذا الدخول \`${sanitizeMarkdownV2(formatNumber(cashConsumedPercent))}%\` من السيولة النقدية المتاحة\\.\n`;
     msg += ` ▪️ *السيولة المتبقية:* بعد الصفقة، أصبحت السيولة تشكل \`${sanitizeMarkdownV2(formatNumber(newCashPercent))}%\` من المحفظة\\.\n`;
     msg += `━━━━━━━━━━━━━━━━━━━━\n*ملاحظات:*\nنرى في هذه المستويات فرصة واعدة\\. المراقبة مستمرة، وسنوافيكم بتحديثات إدارة الصفقة\\.\n`;
+    // الحل الأفضل: استخدام روابط الهاشتاج
     msg += `[\\#توصية](tg://hashtag?tag=توصية) [\\#${sanitizeMarkdownV2(asset)}](tg://hashtag?tag=${sanitizeMarkdownV2(asset)})`;
     return msg;
 }
@@ -394,6 +316,7 @@ function formatPublicSell(details) {
     msg += ` ▪️ *النتيجة:* ربح محقق على الجزء المباع بنسبة \`${sanitizeMarkdownV2(formatNumber(partialPnlPercent))}%\` 🟢\\.\n`;
     msg += ` ▪️ *حالة المركز:* لا يزال المركز مفتوحًا بالكمية المتبقية\\.\n`;
     msg += `━━━━━━━━━━━━━━━━━━━━\n*ملاحظات:*\nخطوة استباقية لإدارة المخاطر وحماية رأس المال\\. نستمر في متابعة الأهداف الأعلى\\.\n`;
+    // الحل الأفضل: استخدام روابط الهاشتاج
     msg += `[\\#إدارة\\_مخاطر](tg://hashtag?tag=إدارة_مخاطر) [\\#${sanitizeMarkdownV2(asset)}](tg://hashtag?tag=${sanitizeMarkdownV2(asset)})`;
     return msg;
 }
@@ -417,6 +340,7 @@ function formatPublicClose(details) {
         msg += `الخروج بانضباط وفقًا للخطة هو نجاح بحد ذاته\\. نحافظ على رأس المال للفرصة القادمة\\.\n`;
     }
     msg += `\nنبارك لمن اتبع التوصية\\. نستعد الآن للبحث عن الفرصة التالية\\.\n`;
+    // الحل الأفضل: استخدام روابط الهاشتاج
     msg += `[\\#نتائجتوصيات](tg://hashtag?tag=نتائجتوصيات) [\\#${sanitizeMarkdownV2(asset)}](tg://hashtag?tag=${sanitizeMarkdownV2(asset)})`;
     return msg;
 }async function formatPortfolioMsg(assets, total, capital) {
@@ -531,7 +455,7 @@ async function formatAdvancedMarketAnalysis(ownedAssets = []) {
     msg += `▫️ *الخلاصة:* ${sanitizeMarkdownV2(breadthConclusion)}\n`;
     msg += `━━━━━━━━━━━━━━━━━━━\n\n`;
 
-    msg += "💰 *أكبر الرابحين \\(24س\\):*\n" + topGainers.map(c => { const symbol = c.instId.split('-')[0]; const ownedMark = ownedSymbols.includes(symbol) ? ' ✅' : ''; return ` \\- \`${sanitizeMarkdownV2(c.instId)}\`: \`+${sanitizeMarkdownV2(formatNumber(c.change24h * 100))}%\`${ownedMark}`; }).join('\n') + "\n\n";
+    msg += "� *أكبر الرابحين \\(24س\\):*\n" + topGainers.map(c => { const symbol = c.instId.split('-')[0]; const ownedMark = ownedSymbols.includes(symbol) ? ' ✅' : ''; return ` \\- \`${sanitizeMarkdownV2(c.instId)}\`: \`+${sanitizeMarkdownV2(formatNumber(c.change24h * 100))}%\`${ownedMark}`; }).join('\n') + "\n\n";
     msg += "📉 *أكبر الخاسرين \\(24س\\):*\n" + topLosers.map(c => { const symbol = c.instId.split('-')[0]; const ownedMark = ownedSymbols.includes(symbol) ? ' ✅' : ''; return ` \\- \`${sanitizeMarkdownV2(c.instId)}\`: \`${sanitizeMarkdownV2(formatNumber(c.change24h * 100))}%\`${ownedMark}`; }).join('\n') + "\n\n";
     msg += "📊 *الأعلى في حجم التداول:*\n" + highVolume.map(c => ` \\- \`${sanitizeMarkdownV2(c.instId)}\`: \`${sanitizeMarkdownV2((c.volCcy24h / 1e6).toFixed(2))}M\` USDT`).join('\n') + "\n\n";
 
@@ -555,7 +479,7 @@ async function formatPerformanceReport(period, periodLabel, history, btcHistory)
 
 // --- Market Data Processing ---
 async function getInstrumentDetails(instId) { try { const tickerRes = await fetch(`${okxAdapter.baseURL}/api/v5/market/ticker?instId=${instId.toUpperCase()}`); const tickerJson = await tickerRes.json(); if (tickerJson.code !== '0' || !tickerJson.data || !tickerJson.data[0]) { return { error: `لم يتم العثور على العملة.` }; } const tickerData = tickerJson.data[0]; return { price: parseFloat(tickerData.last), high24h: parseFloat(tickerData.high24h), low24h: parseFloat(tickerData.low24h), vol24h: parseFloat(tickerData.volCcy24h), }; } catch (e) { throw new Error("خطأ في الاتصال بالمنصة لجلب بيانات السوق."); } }
-async function getHistoricalCandles(instId, bar = '1D', limit = 100) { let allCandles = []; let before = ''; const maxLimitPerRequest = 100; try { while (allCandles.length < limit) { await new Promise(resolve => setTimeout(resolve, 250)); const currentLimit = Math.min(maxLimitPerRequest, limit - allCandles.length); const url = `${okxAdapter.baseURL}/api/v5/market/history-candles?instId=${instId}&bar=${bar}&limit=${currentLimit}${before}`; const res = await fetch(url); const json = await res.json(); if (json.code !== '0' || !json.data || json.data.length === 0) { break; } const newCandles = json.data.map(c => ({ time: parseInt(c[0]), open: parseFloat(c[1]), high: parseFloat(c[2]), low: parseFloat(c[3]), close: parseFloat(c[4]), volume: parseFloat(c[5]) })); allCandles.push(...newCandles); if (newCandles.length < maxLimitPerRequest) { break; } const lastTimestamp = newCandles[newCandles.length - 1].time; before = `&before=${lastTimestamp}`; } return allCandles.reverse(); } catch (e) { console.error(`Error fetching historical candles for ${instId}:`, e); return []; } }
+async function getHistoricalCandles(instId, bar = '1D', limit = 100) { let allCandles = []; let before = ''; const maxLimitPerRequest = 100; try { while (allCandles.length < limit) { await new Promise(resolve => setTimeout(resolve, 250)); const currentLimit = Math.min(maxLimitPerRequest, limit - allCandles.length); const url = `${okxAdapter.baseURL}/api/v5/market/history-candles?instId=${instId}&bar=${bar}&limit=${currentLimit}${before}`; const res = await fetch(url); const json = await res.json(); if (json.code !== '0' || !json.data || json.data.length === 0) { break; } const newCandles = json.data.map(c => ({ time: parseInt(c[0]), high: parseFloat(c[2]), low: parseFloat(c[3]), close: parseFloat(c[4]) })); allCandles.push(...newCandles); if (newCandles.length < maxLimitPerRequest) { break; } const lastTimestamp = newCandles[newCandles.length - 1].time; before = `&before=${lastTimestamp}`; } return allCandles.reverse(); } catch (e) { console.error(`Error fetching historical candles for ${instId}:`, e); return []; } }
 async function getAssetPriceExtremes(instId) { try { const [yearlyCandles, allTimeCandles] = await Promise.all([ getHistoricalCandles(instId, '1D', 365), getHistoricalCandles(instId, '1M', 240) ]); if (yearlyCandles.length === 0) return null; const getHighLow = (candles) => { if (!candles || candles.length === 0) return { high: 0, low: Infinity }; return candles.reduce((acc, candle) => ({ high: Math.max(acc.high, candle.high), low: Math.min(acc.low, candle.low) }), { high: 0, low: Infinity }); }; const weeklyCandles = yearlyCandles.slice(-7); const monthlyCandles = yearlyCandles.slice(-30); const formatLow = (low) => low === Infinity ? 0 : low; const weeklyExtremes = getHighLow(weeklyCandles); const monthlyExtremes = getHighLow(monthlyCandles); const yearlyExtremes = getHighLow(yearlyCandles); const allTimeExtremes = getHighLow(allTimeCandles); return { weekly: { high: weeklyExtremes.high, low: formatLow(weeklyExtremes.low) }, monthly: { high: monthlyExtremes.high, low: formatLow(monthlyExtremes.low) }, yearly: { high: yearlyExtremes.high, low: formatLow(yearlyExtremes.low) }, allTime: { high: allTimeExtremes.high, low: formatLow(allTimeExtremes.low) } }; } catch (error) { console.error(`Error in getAssetPriceExtremes for ${instId}:`, error); return null; } }
 function calculateSMA(closes, period) { if (closes.length < period) return null; const sum = closes.slice(-period).reduce((acc, val) => acc + val, 0); return sum / period; }
 function calculateRSI(closes, period = 14) { if (closes.length < period + 1) return null; let gains = 0, losses = 0; for (let i = 1; i <= period; i++) { const diff = closes[i] - closes[i - 1]; diff > 0 ? gains += diff : losses -= diff; } let avgGain = gains / period, avgLoss = losses / period; for (let i = period + 1; i < closes.length; i++) { const diff = closes[i] - closes[i - 1]; if (diff > 0) { avgGain = (avgGain * (period - 1) + diff) / period; avgLoss = (avgLoss * (period - 1)) / period; } else { avgLoss = (avgLoss * (period - 1) - diff) / period; avgGain = (avgGain * (period - 1)) / period; } } if (avgLoss === 0) return 100; const rs = avgGain / avgLoss; return 100 - (100 / (1 + rs)); }
@@ -953,52 +877,44 @@ async function checkPriceMovements() {
     try {
         await sendDebugMessage("Checking price movements...");
         const alertSettings = await loadAlertSettings();
-        const oldPriceTracker = await loadPriceTracker(); // تحميل الحالة من الدورة السابقة
+        const priceTracker = await loadPriceTracker();
         const prices = await getCachedMarketPrices();
         if (!prices || prices.error) return;
 
         const { assets, total: currentTotalValue, error } = await okxAdapter.getPortfolio(prices);
         if (error || currentTotalValue === undefined) return;
 
-        // تهيئة متتبع جديد للحالة الحالية
-        const newPriceTracker = {
-            totalPortfolioValue: currentTotalValue,
-            assets: {}
-        };
-
-        // إذا كانت هذه هي المرة الأولى التي يعمل فيها المتتبع، فقط احفظ الحالة الحالية واخرج
-        if (oldPriceTracker.totalPortfolioValue === 0) {
+        if (priceTracker.totalPortfolioValue === 0) {
+            priceTracker.totalPortfolioValue = currentTotalValue;
             assets.forEach(a => {
-                if (a.price) newPriceTracker.assets[a.asset] = a.price;
+                if (a.price) priceTracker.assets[a.asset] = a.price;
             });
-            await savePriceTracker(newPriceTracker);
-            await sendDebugMessage("Initialized price tracker. No alerts will be sent on this run.");
+            await savePriceTracker(priceTracker);
             return;
         }
 
-        // --- التحقق من حركة الأصول الفردية ---
+        let trackerUpdated = false;
+
         for (const asset of assets) {
             if (asset.asset === 'USDT' || !asset.price) continue;
-            
-            // إضافة السعر الحالي إلى المتتبع الجديد الذي سيتم حفظه لاحقًا
-            newPriceTracker.assets[asset.asset] = asset.price;
-
-            // المقارنة مع السعر من الدورة السابقة (الحالة القديمة)
-            const lastPrice = oldPriceTracker.assets[asset.asset];
+            const lastPrice = priceTracker.assets[asset.asset];
             if (lastPrice) {
                 const changePercent = ((asset.price - lastPrice) / lastPrice) * 100;
                 const threshold = alertSettings.overrides[asset.asset] || alertSettings.global;
-                
                 if (Math.abs(changePercent) >= threshold) {
                     const movementText = changePercent > 0 ? 'صعود' : 'هبوط';
                     const message = `📈 *تنبيه حركة سعر لأصل\\!* \`${sanitizeMarkdownV2(asset.asset)}\`\n*الحركة:* ${movementText} بنسبة \`${sanitizeMarkdownV2(formatNumber(changePercent))}%\`\n*السعر الحالي:* \`$${sanitizeMarkdownV2(formatSmart(asset.price))}\``;
                     await bot.api.sendMessage(AUTHORIZED_USER_ID, message, { parse_mode: "MarkdownV2" });
+                    priceTracker.assets[asset.asset] = asset.price; 
+                    trackerUpdated = true;
                 }
+            } else {
+                priceTracker.assets[asset.asset] = asset.price;
+                trackerUpdated = true;
             }
         }
 
-        // --- التحقق من حركة المحفظة الإجمالية ---
-        const lastTotalValue = oldPriceTracker.totalPortfolioValue;
+        const lastTotalValue = priceTracker.totalPortfolioValue;
         if (lastTotalValue > 0) {
             const totalChangePercent = ((currentTotalValue - lastTotalValue) / lastTotalValue) * 100;
             const globalThreshold = alertSettings.global;
@@ -1007,18 +923,18 @@ async function checkPriceMovements() {
                 const movementText = totalChangePercent > 0 ? 'صعود' : 'هبوط';
                 const message = `💼 *تنبيه حركة المحفظة\\!* \n*الحركة:* ${movementText} بنسبة \`${sanitizeMarkdownV2(formatNumber(totalChangePercent))}%\`\n*القيمة الحالية:* \`$${sanitizeMarkdownV2(formatNumber(currentTotalValue))}\``;
                 await bot.api.sendMessage(AUTHORIZED_USER_ID, message, { parse_mode: "MarkdownV2" });
+                priceTracker.totalPortfolioValue = currentTotalValue; 
+                trackerUpdated = true;
             }
         }
 
-        // بعد انتهاء جميع عمليات التحقق، احفظ الحالة الجديدة لتُستخدم في الدورة القادمة.
-        await savePriceTracker(newPriceTracker);
-
+        if (trackerUpdated) {
+            await savePriceTracker(priceTracker);
+        }
     } catch (e) {
         console.error("CRITICAL ERROR in checkPriceMovements:", e);
-        await sendDebugMessage(`CRITICAL ERROR in checkPriceMovements: ${e.message}`);
     }
 }
-
 async function runDailyJobs() { try { const settings = await loadSettings(); if (!settings.dailySummary) return; const prices = await getCachedMarketPrices(); if (!prices || prices.error) return; const { total } = await okxAdapter.getPortfolio(prices); if (total === undefined) return; const history = await loadHistory(); const date = new Date().toISOString().slice(0, 10); const today = history.find(h => h.date === date); if (today) { today.total = total; } else { history.push({ date, total, time: Date.now() }); } if (history.length > 35) history.shift(); await saveHistory(history); console.log(`[Daily Summary Recorded]: ${date} - $${formatNumber(total)}`); } catch (e) { console.error("CRITICAL ERROR in runDailyJobs:", e); } }
 async function runHourlyJobs() { try { const prices = await getCachedMarketPrices(); if (!prices || prices.error) return; const { total } = await okxAdapter.getPortfolio(prices); if (total === undefined) return; const history = await loadHourlyHistory(); const hourLabel = new Date().toISOString().slice(0, 13); const existingIndex = history.findIndex(h => h.label === hourLabel); if (existingIndex > -1) { history[existingIndex].total = total; } else { history.push({ label: hourLabel, total, time: Date.now() }); } if (history.length > 72) history.splice(0, history.length - 72); await saveHourlyHistory(history); } catch (e) { console.error("Error in hourly jobs:", e); } }
 async function monitorVirtualTrades() { const activeTrades = await getActiveVirtualTrades(); if (activeTrades.length === 0) return; const prices = await getCachedMarketPrices(); if (!prices || prices.error) return; for (const trade of activeTrades) { const currentPrice = prices[trade.instId]?.price; if (!currentPrice) continue; let finalStatus = null; let pnl = 0; let finalPrice = 0; if (currentPrice >= trade.targetPrice) { finalPrice = trade.targetPrice; pnl = (finalPrice - trade.entryPrice) * (trade.virtualAmount / trade.entryPrice); finalStatus = 'completed'; const profitPercent = (trade.virtualAmount > 0) ? (pnl / trade.virtualAmount) * 100 : 0; const msg = `🎯 *الهدف تحقق \\(توصية افتراضية\\)\\!* ✅\n\n` + `*العملة:* \`${sanitizeMarkdownV2(trade.instId)}\`\n` + `*سعر الدخول:* \`$${sanitizeMarkdownV2(formatSmart(trade.entryPrice))}\`\n` + `*سعر الهدف:* \`$${sanitizeMarkdownV2(formatSmart(trade.targetPrice))}\`\n\n` + `💰 *الربح المحقق:* \`+${sanitizeMarkdownV2(formatNumber(pnl))}\` \\(\`+${sanitizeMarkdownV2(formatNumber(profitPercent))}%\`\\)`; await bot.api.sendMessage(AUTHORIZED_USER_ID, msg, { parse_mode: "MarkdownV2" }); } else if (currentPrice <= trade.stopLossPrice) { finalPrice = trade.stopLossPrice; pnl = (finalPrice - trade.entryPrice) * (trade.virtualAmount / trade.entryPrice); finalStatus = 'stopped'; const lossPercent = (trade.virtualAmount > 0) ? (pnl / trade.virtualAmount) * 100 : 0; const msg = `🛑 *تم تفعيل وقف الخسارة \\(توصية افتراضية\\)\\!* 🔻\n\n` + `*العملة:* \`${sanitizeMarkdownV2(trade.instId)}\`\n` + `*سعر الدخول:* \`$${sanitizeMarkdownV2(formatSmart(trade.entryPrice))}\`\n` + `*سعر الوقف:* \`$${sanitizeMarkdownV2(formatSmart(trade.stopLossPrice))}\`\n\n` + `💸 *الخسارة:* \`${sanitizeMarkdownV2(formatNumber(pnl))}\` \\(\`${sanitizeMarkdownV2(formatNumber(lossPercent))}%\`\\)`; await bot.api.sendMessage(AUTHORIZED_USER_ID, msg, { parse_mode: "MarkdownV2" }); } if (finalStatus) { await updateVirtualTradeStatus(trade._id, finalStatus, finalPrice); } } }
@@ -1047,66 +963,8 @@ const aiKeyboard = new InlineKeyboard()
     .text("📰 أخبار عامة", "ai_get_general_news")
     .text("📈 أخبار محفظتي", "ai_get_portfolio_news");
 
-async function sendSettingsMenu(ctx) {
-    const settings = await loadSettings();
-    const settingsKeyboard = new InlineKeyboard()
-        .text("💰 تعيين رأس المال", "set_capital")
-        .text("💼 عرض المراكز المفتوحة", "view_positions").row()
-        .text("🚨 إدارة تنبيهات الحركة", "manage_movement_alerts")
-        .text("🗑️ حذف تنبيه سعر", "delete_alert").row()
-        .text(`📰 الملخص اليومي: ${settings.dailySummary ? '✅' : '❌'}`, "toggle_summary")
-        .text(`🚀 النشر للقناة: ${settings.autoPostToChannel ? '✅' : '❌'}`, "toggle_autopost").row()
-        .text(`🐞 وضع التشخيص: ${settings.debugMode ? '✅' : '❌'}`, "toggle_debug")
-        .text(`⚙️ تنبيهات فنية: ${settings.technicalPatternAlerts ? '✅' : '❌'}`, "toggle_technical_alerts").row()
-        .text("📊 إرسال تقرير النسخ", "send_daily_report")
-        .text("💾 النسخ الاحتياطي", "manage_backup").row()
-        .text("🔥 حذف جميع البيانات 🔥", "delete_all_data");
-
-    const text = "⚙️ *لوحة التحكم والإعدادات الرئيسية*";
-    try {
-        if (ctx.callbackQuery) {
-            await ctx.editMessageText(text, { parse_mode: "MarkdownV2", reply_markup: settingsKeyboard });
-        } else {
-            await ctx.reply(text, { parse_mode: "MarkdownV2", reply_markup: settingsKeyboard });
-        }
-    } catch(e) {
-        console.error("Error sending settings menu:", e);
-    }
-}
-
-async function sendMovementAlertsMenu(ctx) {
-    const alertSettings = await loadAlertSettings();
-    const text = `🚨 *إدارة تنبيهات حركة الأسعار*\n\n\\- *النسبة العامة الحالية:* \`${alertSettings.global}%\`\\.\n\\- يمكنك تعيين نسبة مختلفة لعملة معينة\\.`;
-    const keyboard = new InlineKeyboard()
-        .text("📊 تعديل النسبة العامة", "set_global_alert")
-        .text("💎 تعديل نسبة عملة", "set_coin_alert").row()
-        .text("🔙 العودة للإعدادات", "back_to_settings");
-    await ctx.editMessageText(text, { parse_mode: "MarkdownV2", reply_markup: keyboard });
-}
-
-async function sendBackupMenu(ctx) {
-    const backupDir = path.join(__dirname, 'backups');
-    let files = [];
-    if (fs.existsSync(backupDir)) {
-        files = fs.readdirSync(backupDir)
-            .filter(file => file.startsWith('backup-'))
-            .sort().reverse();
-    }
-
-    let text = "💾 *إدارة النسخ الاحتياطي والاستعادة*\n\n";
-    if (files.length > 0) {
-        text += `*آخر نسخة احتياطية:* \`${files[0]}\`\n`;
-    } else {
-        text += `*لا توجد نسخ احتياطية متاحة\\.*\n`;
-    }
-
-    const keyboard = new InlineKeyboard()
-        .text("➕ إنشاء نسخة احتياطية الآن", "create_backup_now")
-        .text("🔄 استعادة من نسخة", "restore_from_backup").row()
-        .text("🔙 العودة للإعدادات", "back_to_settings");
-
-    await ctx.editMessageText(text, { parse_mode: "MarkdownV2", reply_markup: keyboard });
-}
+async function sendSettingsMenu(ctx) { const settings = await loadSettings(); const settingsKeyboard = new InlineKeyboard().text("💰 تعيين رأس المال", "set_capital").text("💼 عرض المراكز المفتوحة", "view_positions").row().text("🚨 إدارة تنبيهات الحركة", "manage_movement_alerts").text("🗑️ حذف تنبيه سعر", "delete_alert").row().text(`📰 الملخص اليومي: ${settings.dailySummary ? '✅' : '❌'}`, "toggle_summary").text(`🚀 النشر للقناة: ${settings.autoPostToChannel ? '✅' : '❌'}`, "toggle_autopost").row().text(`🐞 وضع التشخيص: ${settings.debugMode ? '✅' : '❌'}`, "toggle_debug").text("📊 إرسال تقرير النسخ", "send_daily_report").row().text("🔥 حذف جميع البيانات 🔥", "delete_all_data"); const text = "⚙️ *لوحة التحكم والإعدادات الرئيسية*"; try { if (ctx.callbackQuery) { await ctx.editMessageText(text, { parse_mode: "MarkdownV2", reply_markup: settingsKeyboard }); } else { await ctx.reply(text, { parse_mode: "MarkdownV2", reply_markup: settingsKeyboard }); } } catch(e) { console.error("Error sending settings menu:", e); } }
+async function sendMovementAlertsMenu(ctx) { const alertSettings = await loadAlertSettings(); const text = `🚨 *إدارة تنبيهات حركة الأسعار*\n\n\\- *النسبة العامة الحالية:* \`${alertSettings.global}%\`\\.\n\\- يمكنك تعيين نسبة مختلفة لعملة معينة\\.`; const keyboard = new InlineKeyboard().text("📊 تعديل النسبة العامة", "set_global_alert").text("💎 تعديل نسبة عملة", "set_coin_alert").row().text("🔙 العودة للإعدادات", "back_to_settings"); await ctx.editMessageText(text, { parse_mode: "MarkdownV2", reply_markup: keyboard }); }
 
 
 // =================================================================
@@ -1366,19 +1224,8 @@ async function handleCallbackQuery(ctx, data) {
             case "set_coin_alert": waitingState = 'set_coin_alert_state'; await ctx.editMessageText("✍️ يرجى إرسال رمز العملة والنسبة\\.\n*مثال:*\n`BTC 2.5`"); break;
             case "view_positions": const positions = await loadPositions(); if (Object.keys(positions).length === 0) { await ctx.editMessageText("ℹ️ لا توجد مراكز مفتوحة\\.", { reply_markup: new InlineKeyboard().text("🔙 العودة للإعدادات", "back_to_settings") }); break; } let posMsg = "📄 *قائمة المراكز المفتوحة:*\n"; for (const symbol in positions) { const pos = positions[symbol]; posMsg += `\n\\- *${sanitizeMarkdownV2(symbol)}:* متوسط الشراء \`$${sanitizeMarkdownV2(formatSmart(pos.avgBuyPrice))}\``; } await ctx.editMessageText(posMsg, { parse_mode: "MarkdownV2", reply_markup: new InlineKeyboard().text("🔙 العودة للإعدادات", "back_to_settings") }); break;
             case "delete_alert": const alerts = await loadAlerts(); if (alerts.length === 0) { await ctx.editMessageText("ℹ️ لا توجد تنبيهات مسجلة\\.", { reply_markup: new InlineKeyboard().text("🔙 العودة للإعدادات", "back_to_settings") }); break; } let alertMsg = "🗑️ *اختر التنبيه لحذفه:*\n\n"; alerts.forEach((alert, i) => { alertMsg += `*${i + 1}\\.* \`${sanitizeMarkdownV2(alert.instId)} ${sanitizeMarkdownV2(alert.condition)} ${sanitizeMarkdownV2(alert.price)}\`\n`; }); alertMsg += "\n*أرسل رقم التنبيه الذي تود حذفه\\.*"; waitingState = 'delete_alert_number'; await ctx.editMessageText(alertMsg, { parse_mode: "MarkdownV2" }); break;
-            case "toggle_summary": case "toggle_autopost": case "toggle_debug": case "toggle_technical_alerts":
-                const settings = await loadSettings();
-                if (data === 'toggle_summary') settings.dailySummary = !settings.dailySummary;
-                else if (data === 'toggle_autopost') settings.autoPostToChannel = !settings.autoPostToChannel;
-                else if (data === 'toggle_debug') settings.debugMode = !settings.debugMode;
-                else if (data === 'toggle_technical_alerts') settings.technicalPatternAlerts = !settings.technicalPatternAlerts;
-                await saveSettings(settings);
-                await sendSettingsMenu(ctx);
-                break;
+            case "toggle_summary": case "toggle_autopost": case "toggle_debug": const settings = await loadSettings(); if (data === 'toggle_summary') settings.dailySummary = !settings.dailySummary; else if (data === 'toggle_autopost') settings.autoPostToChannel = !settings.autoPostToChannel; else if (data === 'toggle_debug') settings.debugMode = !settings.debugMode; await saveSettings(settings); await sendSettingsMenu(ctx); break;
             case "send_daily_report": await ctx.editMessageText("⏳ جاري إنشاء وإرسال تقرير النسخ اليومي\\.\\.\\."); await runDailyReportJob(); await sendSettingsMenu(ctx); break;
-            case "manage_backup": await sendBackupMenu(ctx); break;
-            case "create_backup_now": await ctx.editMessageText("⏳ جاري إنشاء نسخة احتياطية\\.\\.\\."); const backupResult = await createBackup(); if (backupResult.success) { await ctx.reply(`✅ تم إنشاء النسخة الاحتياطية بنجاح\\!`); } else { await ctx.reply(`❌ فشل إنشاء النسخة الاحتياطية: ${sanitizeMarkdownV2(backupResult.error)}`); } await sendBackupMenu(ctx); break;
-            case "restore_from_backup": waitingState = 'restore_from_backup_name'; const backupDir = path.join(__dirname, 'backups'); let files = []; if (fs.existsSync(backupDir)) { files = fs.readdirSync(backupDir).filter(file => file.startsWith('backup-')).sort().reverse(); } if (files.length === 0) { await ctx.editMessageText("ℹ️ لا توجد نسخ احتياطية متاحة للاستعادة\\.", { reply_markup: new InlineKeyboard().text("🔙 العودة", "manage_backup") }); break; } let restoreMsg = "🔄 *اختر نسخة احتياطية للاستعادة:*\n\n"; files.slice(0, 10).forEach((file, i) => { restoreMsg += `*${i + 1}\\.* \`${sanitizeMarkdownV2(file)}\`\n`; }); restoreMsg += "\n*أرسل اسم الملف الكامل الذي تود استعادته\\.*"; await ctx.editMessageText(restoreMsg, { parse_mode: "MarkdownV2" }); break;
             case "delete_all_data": waitingState = 'confirm_delete_all'; await ctx.editMessageText("⚠️ *تحذير: هذا الإجراء لا يمكن التراجع عنه\\!* لحذف كل شيء، أرسل: `تأكيد الحذف`", { parse_mode: "MarkdownV2" }); break;
         }
     } catch (e) {
@@ -1505,14 +1352,6 @@ async function handleWaitingState(ctx, state, text) {
                 await saveAlerts(currentAlerts);
                 await ctx.reply(`✅ تم حذف التنبيه\\.`);
                 break;
-            case 'restore_from_backup_name':
-                const restoreResult = await restoreFromBackup(text);
-                if (restoreResult.success) {
-                    await ctx.reply(`✅ تم استعادة البيانات بنجاح من \`${sanitizeMarkdownV2(text)}\`\\.`, { parse_mode: "MarkdownV2" });
-                } else {
-                    await ctx.reply(`❌ فشلت استعادة البيانات: ${sanitizeMarkdownV2(restoreResult.error)}`, { parse_mode: "MarkdownV2" });
-                }
-                break;
         }
     } catch (e) {
         console.error(`Error in handleWaitingState for state "${state}":`, e);
@@ -1558,8 +1397,6 @@ async function startBot() {
         setInterval(runHourlyJobs, 60 * 60 * 1000);
         setInterval(runDailyJobs, 24 * 60 * 60 * 1000);
         setInterval(runDailyReportJob, 24 * 60 * 60 * 1000);
-        setInterval(createBackup, BACKUP_INTERVAL); // Automatic backup
-        setInterval(checkTechnicalPatterns, 60 * 60 * 1000); // *** NEW: Run technical check every hour ***
 
       console.log("Running initial jobs on startup...");
         await runHourlyJobs();
@@ -1568,7 +1405,7 @@ async function startBot() {
         // Start real-time monitoring
         connectToOKXSocket();
 
-        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v145\\.0 \\- Automatic Technical Alerts\\)*\n\n\\- تمت إضافة ميزة التنبيهات الفنية التلقائية للأنماط والتقاطعات\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
+        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v143\\.6 \\- Robust Sanitization\\)*\n\n\\- تم تحسين آلية تهيئة النصوص لمنع جميع أخطاء التنسيق\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
 
     } catch (e) {
         console.error("FATAL: Could not start the bot.", e);
@@ -1577,7 +1414,7 @@ async function startBot() {
 }
 
 // =================================================================
-// SECTION 9: WEBSOCKET MANAGER
+// SECTION 9: WEBSOCKET MANAGER (NEW)
 // =================================================================
 function connectToOKXSocket() {
     const ws = new WebSocket('wss://ws.okx.com:8443/ws/v5/private');
