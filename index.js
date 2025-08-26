@@ -944,44 +944,52 @@ async function checkPriceMovements() {
     try {
         await sendDebugMessage("Checking price movements...");
         const alertSettings = await loadAlertSettings();
-        const priceTracker = await loadPriceTracker();
+        const oldPriceTracker = await loadPriceTracker(); // تحميل الحالة من الدورة السابقة
         const prices = await getCachedMarketPrices();
         if (!prices || prices.error) return;
 
         const { assets, total: currentTotalValue, error } = await okxAdapter.getPortfolio(prices);
         if (error || currentTotalValue === undefined) return;
 
-        if (priceTracker.totalPortfolioValue === 0) {
-            priceTracker.totalPortfolioValue = currentTotalValue;
+        // تهيئة متتبع جديد للحالة الحالية
+        const newPriceTracker = {
+            totalPortfolioValue: currentTotalValue,
+            assets: {}
+        };
+
+        // إذا كانت هذه هي المرة الأولى التي يعمل فيها المتتبع، فقط احفظ الحالة الحالية واخرج
+        if (oldPriceTracker.totalPortfolioValue === 0) {
             assets.forEach(a => {
-                if (a.price) priceTracker.assets[a.asset] = a.price;
+                if (a.price) newPriceTracker.assets[a.asset] = a.price;
             });
-            await savePriceTracker(priceTracker);
+            await savePriceTracker(newPriceTracker);
+            await sendDebugMessage("Initialized price tracker. No alerts will be sent on this run.");
             return;
         }
 
-        let trackerUpdated = false;
-
+        // --- التحقق من حركة الأصول الفردية ---
         for (const asset of assets) {
             if (asset.asset === 'USDT' || !asset.price) continue;
-            const lastPrice = priceTracker.assets[asset.asset];
+            
+            // إضافة السعر الحالي إلى المتتبع الجديد الذي سيتم حفظه لاحقًا
+            newPriceTracker.assets[asset.asset] = asset.price;
+
+            // المقارنة مع السعر من الدورة السابقة (الحالة القديمة)
+            const lastPrice = oldPriceTracker.assets[asset.asset];
             if (lastPrice) {
                 const changePercent = ((asset.price - lastPrice) / lastPrice) * 100;
                 const threshold = alertSettings.overrides[asset.asset] || alertSettings.global;
+                
                 if (Math.abs(changePercent) >= threshold) {
                     const movementText = changePercent > 0 ? 'صعود' : 'هبوط';
                     const message = `📈 *تنبيه حركة سعر لأصل\\!* \`${sanitizeMarkdownV2(asset.asset)}\`\n*الحركة:* ${movementText} بنسبة \`${sanitizeMarkdownV2(formatNumber(changePercent))}%\`\n*السعر الحالي:* \`$${sanitizeMarkdownV2(formatSmart(asset.price))}\``;
                     await bot.api.sendMessage(AUTHORIZED_USER_ID, message, { parse_mode: "MarkdownV2" });
-                    priceTracker.assets[asset.asset] = asset.price; 
-                    trackerUpdated = true;
                 }
-            } else {
-                priceTracker.assets[asset.asset] = asset.price;
-                trackerUpdated = true;
             }
         }
 
-        const lastTotalValue = priceTracker.totalPortfolioValue;
+        // --- التحقق من حركة المحفظة الإجمالية ---
+        const lastTotalValue = oldPriceTracker.totalPortfolioValue;
         if (lastTotalValue > 0) {
             const totalChangePercent = ((currentTotalValue - lastTotalValue) / lastTotalValue) * 100;
             const globalThreshold = alertSettings.global;
@@ -990,18 +998,17 @@ async function checkPriceMovements() {
                 const movementText = totalChangePercent > 0 ? 'صعود' : 'هبوط';
                 const message = `💼 *تنبيه حركة المحفظة\\!* \n*الحركة:* ${movementText} بنسبة \`${sanitizeMarkdownV2(formatNumber(totalChangePercent))}%\`\n*القيمة الحالية:* \`$${sanitizeMarkdownV2(formatNumber(currentTotalValue))}\``;
                 await bot.api.sendMessage(AUTHORIZED_USER_ID, message, { parse_mode: "MarkdownV2" });
-                priceTracker.totalPortfolioValue = currentTotalValue; 
-                trackerUpdated = true;
             }
         }
 
-        if (trackerUpdated) {
-            await savePriceTracker(priceTracker);
-        }
+        // بعد انتهاء جميع عمليات التحقق، احفظ الحالة الجديدة لتُستخدم في الدورة القادمة.
+        await savePriceTracker(newPriceTracker);
+
     } catch (e) {
         console.error("CRITICAL ERROR in checkPriceMovements:", e);
+        await sendDebugMessage(`CRITICAL ERROR in checkPriceMovements: ${e.message}`);
     }
-    }
+}
 
 async function runDailyJobs() { try { const settings = await loadSettings(); if (!settings.dailySummary) return; const prices = await getCachedMarketPrices(); if (!prices || prices.error) return; const { total } = await okxAdapter.getPortfolio(prices); if (total === undefined) return; const history = await loadHistory(); const date = new Date().toISOString().slice(0, 10); const today = history.find(h => h.date === date); if (today) { today.total = total; } else { history.push({ date, total, time: Date.now() }); } if (history.length > 35) history.shift(); await saveHistory(history); console.log(`[Daily Summary Recorded]: ${date} - $${formatNumber(total)}`); } catch (e) { console.error("CRITICAL ERROR in runDailyJobs:", e); } }
 async function runHourlyJobs() { try { const prices = await getCachedMarketPrices(); if (!prices || prices.error) return; const { total } = await okxAdapter.getPortfolio(prices); if (total === undefined) return; const history = await loadHourlyHistory(); const hourLabel = new Date().toISOString().slice(0, 13); const existingIndex = history.findIndex(h => h.label === hourLabel); if (existingIndex > -1) { history[existingIndex].total = total; } else { history.push({ label: hourLabel, total, time: Date.now() }); } if (history.length > 72) history.splice(0, history.length - 72); await saveHourlyHistory(history); } catch (e) { console.error("Error in hourly jobs:", e); } }
