@@ -1,5 +1,5 @@
 // =================================================================
-// Advanced Analytics Bot - v144.0 (Enhanced Features & Fixes)
+// Advanced Analytics Bot - v145.0 (Automatic Technical Alerts)
 // =================================================================
 // --- IMPORTS ---
 const express = require("express");
@@ -198,6 +198,10 @@ const loadAlertSettings = async () => await getConfig("alertSettings", { global:
 const saveAlertSettings = (settings) => saveConfig("alertSettings", settings);
 const loadPriceTracker = async () => await getConfig("priceTracker", { totalPortfolioValue: 0, assets: {} });
 const savePriceTracker = (tracker) => saveConfig("priceTracker", tracker);
+// *** NEW: Helper for technical alerts state ***
+const loadTechnicalAlertsState = async () => await getConfig("technicalAlertsState", {});
+const saveTechnicalAlertsState = (state) => saveConfig("technicalAlertsState", state);
+
 
 // --- Utility Functions ---
 const formatNumber = (num, decimals = 2) => { const number = parseFloat(num); return isNaN(number) || !isFinite(number) ? (0).toFixed(decimals) : number.toFixed(decimals); };
@@ -266,6 +270,7 @@ async function createBackup() {
             capital: { value: await loadCapital() },
             virtualTrades: await getCollection("virtualTrades").find({}).toArray(),
             tradeHistory: await getCollection("tradeHistory").find({}).toArray(),
+            technicalAlertsState: await loadTechnicalAlertsState(), // *** NEW: Backup technical state ***
             timestamp
         };
 
@@ -302,6 +307,9 @@ async function restoreFromBackup(backupFile) {
         await saveAlertSettings(backupData.alertSettings);
         await savePriceTracker(backupData.priceTracker);
         await saveCapital(backupData.capital.value);
+        if (backupData.technicalAlertsState) { // *** NEW: Restore technical state ***
+            await saveTechnicalAlertsState(backupData.technicalAlertsState);
+        }
 
         if (backupData.virtualTrades) {
             await getCollection("virtualTrades").deleteMany({});
@@ -360,7 +368,7 @@ function formatPublicBuy(details) {
     const { asset, price, oldTotalValue, tradeValue, oldUsdtValue, newCashPercent } = details;
     const tradeSizePercent = oldTotalValue > 0 ? (tradeValue / oldTotalValue) * 100 : 0;
     const cashConsumedPercent = (oldUsdtValue > 0) ? (tradeValue / oldUsdtValue) * 100 : 0;
-    let msg = `*💡 توصية جديدة: بناء مركز في ${sanitizeMarkdownV2(asset)} 🟢*\n━━━━━━━━━━━━━━━━━━━━\n`;
+    let msg = `*💡 توصية جديدة: بناء مركز في ${sanitizeMarkdownV2(asset)} �*\n━━━━━━━━━━━━━━━━━━━━\n`;
     msg += `*الأصل:* \`${sanitizeMarkdownV2(asset)}/USDT\`\n`;
     msg += `*سعر الدخول الحالي:* \`$${sanitizeMarkdownV2(formatSmart(price))}\`\n`;
     msg += `━━━━━━━━━━━━━━━━━━━━\n*استراتيجية إدارة المحفظة:*\n`;
@@ -598,8 +606,8 @@ async function getCoinFundamentals(coinSymbol) {
         return { error: "فشل الاتصال بخدمة بيانات المشاريع." };
     }
 }
-function truncate(s, max = 12000) {
-    return s.length > max ? s.slice(0, max) + "..." : s;
+function truncate(s, max = 12000) { 
+    return s.length > max ? s.slice(0, max) + "..." : s; 
 }
 
 async function getAIAnalysisForAsset(asset) {
@@ -665,7 +673,7 @@ async function getAIAnalysisForPortfolio(assets, total, capital) {
     - رأس المال الأصلي: $${formatNumber(capital)}
     - إجمالي الربح/الخسارة غير المحقق: ${formatNumber(pnlPercent)}%
     - أبرز 5 أصول في المحفظة: ${topAssets}
-   
+    
     قدم تقييمًا لصحة المحفظة، درجة تنوعها، وأهم المخاطر أو الفرص التي تراها. ثم قدم توصية واحدة واضحة لتحسين أدائها.
     `;
 
@@ -674,10 +682,11 @@ async function getAIAnalysisForPortfolio(assets, total, capital) {
 
 async function getLatestCryptoNews(searchQuery) {
     try {
-        if (!NEWS_API_KEY) throw new Error("NEWS_API_KEY is not configured.");
+        const apiKey = process.env.NEWS_API_KEY;
+        if (!apiKey) throw new Error("NEWS_API_KEY is not configured.");
 
         const fromDate = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-        const url = `https://newsapi.org/v2/everything?q=(${searchQuery})&sortBy=relevancy&from=${fromDate}&pageSize=10&apiKey=${NEWS_API_KEY}`;
+        const url = `https://newsapi.org/v2/everything?q=(${searchQuery})&sortBy=relevancy&from=${fromDate}&pageSize=10&apiKey=${apiKey}`;
 
         const res = await fetch(url);
         const data = await res.json();
@@ -730,7 +739,7 @@ async function getAIPortfolioNewsSummary() {
         return "ℹ️ لا تحتوي محفظتك على عملات رقمية لجلب أخبار متعلقة بها.";
     }
 
-    const assetSymbols = cryptoAssets.map(a => `"${a.asset} crypto"`).join(' OR ');
+    const assetSymbols = cryptoAssets.map(a => `"${a.asset} crypto"`).join(' OR '); 
 
     const newsArticles = await getLatestCryptoNews(assetSymbols);
     if (newsArticles.error) return `❌ فشل في جلب الأخبار: ${newsArticles.error}`;
@@ -1310,11 +1319,11 @@ async function handleCallbackQuery(ctx, data) {
             const report = await formatPerformanceReport(period, periodLabel, mappedHistory, btcHistoryCandles);
 
             try {
-                if (report.error) {
-                    await ctx.editMessageText(report.error);
-                } else {
-                    await ctx.replyWithPhoto(report.chartUrl, { caption: report.caption, parse_mode: "MarkdownV2" });
-                    await ctx.deleteMessage();
+                if (report.error) { 
+                    await ctx.editMessageText(report.error); 
+                } else { 
+                    await ctx.replyWithPhoto(report.chartUrl, { caption: report.caption, parse_mode: "MarkdownV2" }); 
+                    await ctx.deleteMessage(); 
                 }
             } catch (chartError) {
                 console.error("Chart generation failed, sending text fallback:", chartError);
@@ -1550,6 +1559,7 @@ async function startBot() {
         setInterval(runDailyJobs, 24 * 60 * 60 * 1000);
         setInterval(runDailyReportJob, 24 * 60 * 60 * 1000);
         setInterval(createBackup, BACKUP_INTERVAL); // Automatic backup
+        setInterval(checkTechnicalPatterns, 60 * 60 * 1000); // *** NEW: Run technical check every hour ***
 
       console.log("Running initial jobs on startup...");
         await runHourlyJobs();
@@ -1558,7 +1568,7 @@ async function startBot() {
         // Start real-time monitoring
         connectToOKXSocket();
 
-        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v144\\.0 \\- Enhanced Features\\)*\n\n\\- تمت إضافة التحليل الفني، إدارة المخاطر، والنسخ الاحتياطي\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
+        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v145\\.0 \\- Automatic Technical Alerts\\)*\n\n\\- تمت إضافة ميزة التنبيهات الفنية التلقائية للأنماط والتقاطعات\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
 
     } catch (e) {
         console.error("FATAL: Could not start the bot.", e);
@@ -1596,7 +1606,7 @@ function connectToOKXSocket() {
             return;
         }
 
-        try {
+        try { 
             const message = JSON.parse(rawData);
 
             if (message.event === 'login' && message.code === '0') {
