@@ -1,5 +1,5 @@
 // =================================================================
-// Advanced Analytics Bot - v146.0 (Operational Awareness Update)
+// Advanced Analytics Bot - v146.1 (Syntax Hotfix)
 // =================================================================
 // --- IMPORTS ---
 const express = require("express");
@@ -398,7 +398,7 @@ function formatPublicSell(details) {
     const soldPercent = totalPositionAmountBeforeSale > 0 ? (Math.abs(amountChange) / totalPositionAmountBeforeSale) * 100 : 0;
     const partialPnl = (price - position.avgBuyPrice);
     const partialPnlPercent = position.avgBuyPrice > 0 ? (partialPnl / position.avgBuyPrice) * 100 : 0;
-    let msg = `*⚙️ تحديث التوصية: إدارة مركز ${sanitizeMarkdownV2(asset)} 🟠*\n━━━━━━━━━━━━━━━━━━━━\n`;
+    let msg = `*⚙️ تحديث التوصية: إدارة مركز ${sanitizeMarkdownV2(asset)} �*\n━━━━━━━━━━━━━━━━━━━━\n`;
     msg += `*الأصل:* \`${sanitizeMarkdownV2(asset)}/USDT\`\n`;
     msg += `*سعر البيع الجزئي:* \`$${sanitizeMarkdownV2(formatSmart(price))}\`\n`;
     msg += `━━━━━━━━━━━━━━━━━━━━\n*استراتيجية إدارة المحفظة:*\n`;
@@ -456,7 +456,7 @@ function formatPublicClose(details) {
         const dailyPnl = total - totalValue24hAgo;
         const dailyPnlPercent = (dailyPnl / totalValue24hAgo) * 100;
         const dailySign = dailyPnl >= 0 ? '+' : '';
-        const dailyEmoji = dailyPnl >= 0 ? '🟢⬆️' : '�⬇️';
+        const dailyEmoji = dailyPnl >= 0 ? '🟢⬆️' : '🔴⬇️';
         dailyPnlText = ` ${dailyEmoji} \`$${sanitizeMarkdownV2(dailySign)}${sanitizeMarkdownV2(formatNumber(dailyPnl))}\` \\(\`${sanitizeMarkdownV2(dailySign)}${sanitizeMarkdownV2(formatNumber(dailyPnlPercent))}%\`\\)`;
     }
 
@@ -592,7 +592,8 @@ async function formatPulseDashboard() {
         // Note: Slippage calculation is not possible without an external signal source price.
         // The "tradeValue" is used as a proxy for the cost/impact of the trade.
         msg += `  \\- *الانزلاق السعري:* \`غير متاح حاليًا\`\n`;
-        msg += "  \\- *سلسلة التأخير:* `اكتشاف` → \`${sanitizeMarkdownV2((log.analysisTime - log.signalTime) / 1000)}s\` → `إشعار`\n`;
+        // *** HOTFIX V146.1: Corrected syntax from double quotes to template literal backticks ***
+        msg += `  \\- *سلسلة التأخير:* \`اكتشاف\` → \`${sanitizeMarkdownV2((log.analysisTime - log.signalTime) / 1000)}s\` → \`إشعار\`\n`;
         msg += "━━━━━━━━━━━━━━━━━━━━\n";
     }
 
@@ -1828,7 +1829,7 @@ async function startBot() {
         // Start real-time monitoring
         connectToOKXSocket();
 
-        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v146\\.0 \\- Operational Awareness Update\\)*\n\n\\- تمت إضافة لوحة النبض، سياق السوق، والملخص اليومي\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
+        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v146\\.1 \\- Syntax Hotfix\\)*\n\n\\- تم إصلاح خطأ برمجي في لوحة النبض\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
 
     } catch (e) {
         console.error("FATAL: Could not start the bot.", e);
