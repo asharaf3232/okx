@@ -1,5 +1,5 @@
 // =================================================================
-// Advanced Analytics Bot - v146.3 (Unified Analysis Engine)
+// Advanced Analytics Bot - v146.4 (UI Hotfix & Restoration)
 // =================================================================
 // --- IMPORTS ---
 const express = require("express");
@@ -397,7 +397,7 @@ function formatPublicSell(details) {
     const soldPercent = totalPositionAmountBeforeSale > 0 ? (Math.abs(amountChange) / totalPositionAmountBeforeSale) * 100 : 0;
     const partialPnl = (price - position.avgBuyPrice);
     const partialPnlPercent = position.avgBuyPrice > 0 ? (partialPnl / position.avgBuyPrice) * 100 : 0;
-    let msg = `*⚙️ تحديث التوصية: إدارة مركز ${sanitizeMarkdownV2(asset)} �*\n━━━━━━━━━━━━━━━━━━━━\n`;
+    let msg = `*⚙️ تحديث التوصية: إدارة مركز ${sanitizeMarkdownV2(asset)} 🟠*\n━━━━━━━━━━━━━━━━━━━━\n`;
     msg += `*الأصل:* \`${sanitizeMarkdownV2(asset)}/USDT\`\n`;
     msg += `*سعر البيع الجزئي:* \`$${sanitizeMarkdownV2(formatSmart(price))}\`\n`;
     msg += `━━━━━━━━━━━━━━━━━━━━\n*استراتيجية إدارة المحفظة:*\n`;
@@ -1316,11 +1316,11 @@ async function formatCumulativeReport(asset) {
 // =================================================================
 // SECTION 6: BOT KEYBOARDS & MENUS
 // =================================================================
-// *** MODIFIED V146.3: Added new unified report button ***
+// *** MODIFIED V146.4: Restored "Quick Stats" button ***
 const mainKeyboard = new Keyboard()
     .text("📊 عرض المحفظة").text("📈 أداء المحفظة").text("🚀 تحليل السوق").row()
     .text("📜 تقرير شامل").text("⏱️ لوحة النبض").text("📝 ملخص اليوم").row()
-    .text("🧠 تحليل بالذكاء الاصطناعي").text("📈 تحليل تراكمي").text("🔍 مراجعة الصفقات").row()
+    .text("🧠 تحليل بالذكاء الاصطناعي").text("📈 تحليل تراكمي").text("⚡ إحصائيات سريعة").row()
     .text("💡 توصية افتراضية").text("🧮 حاسبة الربح والخسارة").text("⚙️ الإعدادات").row()
     .resized();
 
@@ -1539,7 +1539,6 @@ async function handleTextMessage(ctx, text) {
                 await sendSettingsMenu(ctx);
                 break;
             
-            // *** NEW V146.3: Handler for the unified report button ***
             case "📜 تقرير شامل":
                 loadingMessage.id = (await ctx.reply("⏳ جاري إعداد التقرير الشامل، قد يستغرق هذا بعض الوقت...")).message_id;
                 loadingMessage.chat_id = ctx.chat.id;
@@ -1928,7 +1927,7 @@ async function startBot() {
         // Start real-time monitoring
         connectToOKXSocket();
 
-        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v146\\.3 \\- Unified Analysis Engine\\)*\n\n\\- تمت إضافة ميزة التقرير الشامل الموحد\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
+        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v146\\.4 \\- UI Hotfix & Restoration\\)*\n\n\\- تم إصلاح واجهة الأزرار وإعادة زر الإحصائيات السريعة\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
 
     } catch (e) {
         console.error("FATAL: Could not start the bot.", e);
