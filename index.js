@@ -1,5 +1,5 @@
 // =================================================================
-// Advanced Analytics Bot - v146.4 (UI Hotfix & Restoration)
+// Advanced Analytics Bot - v146.5 (UI Restoration II)
 // =================================================================
 // --- IMPORTS ---
 const express = require("express");
@@ -1316,13 +1316,14 @@ async function formatCumulativeReport(asset) {
 // =================================================================
 // SECTION 6: BOT KEYBOARDS & MENUS
 // =================================================================
-// *** MODIFIED V146.4: Restored "Quick Stats" button ***
+// *** MODIFIED V146.5: Restored "Review Trades" and all other buttons ***
 const mainKeyboard = new Keyboard()
     .text("📊 عرض المحفظة").text("📈 أداء المحفظة").text("🚀 تحليل السوق").row()
-    .text("📜 تقرير شامل").text("⏱️ لوحة النبض").text("📝 ملخص اليوم").row()
-    .text("🧠 تحليل بالذكاء الاصطناعي").text("📈 تحليل تراكمي").text("⚡ إحصائيات سريعة").row()
-    .text("💡 توصية افتراضية").text("🧮 حاسبة الربح والخسارة").text("⚙️ الإعدادات").row()
-    .resized();
+    .text("📜 تقرير شامل").text("🔍 مراجعة الصفقات").text("📈 تحليل تراكمي").row()
+    .text("⏱️ لوحة النبض").text("📝 ملخص اليوم").text("⚡ إحصائيات سريعة").row()
+    .text("🧠 تحليل بالذكاء الاصطناعي").text("💡 توصية افتراضية").text("🧮 حاسبة الربح والخسارة").row()
+    .text("⚙️ الإعدادات").resized();
+
 
 const virtualTradeKeyboard = new InlineKeyboard()
     .text("➕ إضافة توصية جديدة", "add_virtual_trade").row()
@@ -1927,7 +1928,7 @@ async function startBot() {
         // Start real-time monitoring
         connectToOKXSocket();
 
-        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v146\\.4 \\- UI Hotfix & Restoration\\)*\n\n\\- تم إصلاح واجهة الأزرار وإعادة زر الإحصائيات السريعة\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
+        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v146\\.5 \\- UI Restoration II\\)*\n\n\\- تم إصلاح واجهة الأزرار وإعادة زر مراجعة الصفقات\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
 
     } catch (e) {
         console.error("FATAL: Could not start the bot.", e);
