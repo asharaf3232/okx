@@ -1,5 +1,5 @@
 // =================================================================
-// Advanced Analytics Bot - v146.5 (UI Restoration II)
+// Advanced Analytics Bot - v146.5 (Logic Fix)
 // =================================================================
 // --- IMPORTS ---
 const express = require("express");
@@ -178,7 +178,6 @@ const getHistoricalPerformance = async (asset) => { try { const history = await 
 const saveVirtualTrade = async (tradeData) => { try { const tradeWithId = { ...tradeData, _id: crypto.randomBytes(16).toString("hex") }; await getCollection("virtualTrades").insertOne(tradeWithId); return tradeWithId; } catch (e) { console.error("Error saving virtual trade:", e); } };
 const getActiveVirtualTrades = async () => { try { return await getCollection("virtualTrades").find({ status: 'active' }).toArray(); } catch (e) { return []; } };
 const updateVirtualTradeStatus = async (tradeId, status, finalPrice) => { try { await getCollection("virtualTrades").updateOne({ _id: tradeId }, { $set: { status: status, closePrice: finalPrice, closedAt: new Date() } }); } catch (e) { console.error(`Error updating virtual trade ${tradeId}:`, e); } };
-// *** NEW V146.0: Latency Log Helpers ***
 const saveLatencyLog = async (logData) => { try { await getCollection("latencyLogs").insertOne({ ...logData, _id: crypto.randomBytes(16).toString("hex") }); } catch (e) { console.error("Error in saveLatencyLog:", e); } };
 const getRecentLatencyLogs = async (limit = 10) => { try { return await getCollection("latencyLogs").find().sort({ signalTime: -1 }).limit(limit).toArray(); } catch (e) { return []; } };
 const getLatencyLogsForPeriod = async (hours = 24) => { try { const since = new Date(Date.now() - hours * 60 * 60 * 1000); return await getCollection("latencyLogs").find({ signalTime: { $gte: since } }).toArray(); } catch (e) { return []; } };
@@ -275,7 +274,7 @@ async function createBackup() {
             virtualTrades: await getCollection("virtualTrades").find({}).toArray(),
             tradeHistory: await getCollection("tradeHistory").find({}).toArray(),
             technicalAlertsState: await loadTechnicalAlertsState(),
-            latencyLogs: await getCollection("latencyLogs").find({}).toArray(), // *** NEW V146.0: Backup latency logs ***
+            latencyLogs: await getCollection("latencyLogs").find({}).toArray(),
             timestamp
         };
 
@@ -324,7 +323,7 @@ async function restoreFromBackup(backupFile) {
             await getCollection("tradeHistory").deleteMany({});
             await getCollection("tradeHistory").insertMany(backupData.tradeHistory);
         }
-        if (backupData.latencyLogs) { // *** NEW V146.0: Restore latency logs ***
+        if (backupData.latencyLogs) {
             await getCollection("latencyLogs").deleteMany({});
             await getCollection("latencyLogs").insertMany(backupData.latencyLogs);
         }
@@ -560,7 +559,6 @@ async function formatAdvancedMarketAnalysis(ownedAssets = []) {
 async function formatQuickStats(assets, total, capital) { const pnl = capital > 0 ? total - capital : 0; const pnlPercent = capital > 0 ? (pnl / capital) * 100 : 0; const statusEmoji = pnl >= 0 ? '🟢' : '🔴'; const statusText = pnl >= 0 ? 'ربح' : 'خسارة'; let msg = "⚡ *إحصائيات سريعة*\n\n"; msg += `💎 *إجمالي الأصول:* \`${assets.filter(a => a.asset !== 'USDT').length}\`\n`; msg += `💰 *القيمة الحالية:* \`$${sanitizeMarkdownV2(formatNumber(total))}\`\n`; if (capital > 0) { msg += `📈 *نسبة الربح/الخسارة:* \`${sanitizeMarkdownV2(formatNumber(pnlPercent))}%\`\n`; msg += `🎯 *الحالة:* ${statusEmoji} ${statusText}\n`; } msg += `\n━━━━━━━━━━━━━━━━━━━━\n*تحليل القمم والقيعان للأصول:*\n`; const cryptoAssets = assets.filter(a => a.asset !== "USDT"); if (cryptoAssets.length === 0) { msg += "\n`لا توجد أصول في محفظتك لتحليلها\\.`"; } else { const assetExtremesPromises = cryptoAssets.map(asset => getAssetPriceExtremes(`${asset.asset}-USDT`) ); const assetExtremesResults = await Promise.all(assetExtremesPromises); cryptoAssets.forEach((asset, index) => { const extremes = assetExtremesResults[index]; msg += `\n🔸 *${sanitizeMarkdownV2(asset.asset)}:*\n`; if (extremes) { msg += ` *الأسبوعي:* قمة \`$${sanitizeMarkdownV2(formatSmart(extremes.weekly.high))}\` / قاع \`$${sanitizeMarkdownV2(formatSmart(extremes.weekly.low))}\`\n`; msg += ` *الشهري:* قمة \`$${sanitizeMarkdownV2(formatSmart(extremes.monthly.high))}\` / قاع \`$${sanitizeMarkdownV2(formatSmart(extremes.monthly.low))}\`\n`; msg += ` *السنوي:* قمة \`$${sanitizeMarkdownV2(formatSmart(extremes.yearly.high))}\` / قاع \`$${sanitizeMarkdownV2(formatSmart(extremes.yearly.low))}\`\n`; msg += ` *التاريخي:* قمة \`$${sanitizeMarkdownV2(formatSmart(extremes.allTime.high))}\` / قاع \`$${sanitizeMarkdownV2(formatSmart(extremes.allTime.low))}\``; } else { msg += ` \`تعذر جلب البيانات التاريخية\\.\``; } }); } msg += `\n\n⏰ *آخر تحديث:* ${sanitizeMarkdownV2(new Date().toLocaleString("ar-EG", { timeZone: "Africa/Cairo" }))}`; return msg; }
 async function formatPerformanceReport(period, periodLabel, history, btcHistory) { const stats = calculatePerformanceStats(history); if (!stats) return { error: "ℹ️ لا توجد بيانات كافية لهذه الفترة\\." }; let btcPerformanceText = " `لا تتوفر بيانات`"; let benchmarkComparison = ""; if (btcHistory && btcHistory.length >= 2) { const btcStart = btcHistory[0].close; const btcEnd = btcHistory[btcHistory.length - 1].close; const btcChange = (btcEnd - btcStart) / btcStart * 100; btcPerformanceText = `\`${sanitizeMarkdownV2(btcChange >= 0 ? '+' : '')}${sanitizeMarkdownV2(formatNumber(btcChange))}%\``; if (stats.pnlPercent > btcChange) { benchmarkComparison = `▪️ *النتيجة:* أداء أعلى من السوق ✅`; } else { benchmarkComparison = `▪️ *النتيجة:* أداء أقل من السوق ⚠️`; } } const chartLabels = history.map(h => period === '24h' ? new Date(h.time).getHours() + ':00' : new Date(h.time).toLocaleDateString('en-GB', {day: '2-digit', month: '2-digit'})); const chartDataPoints = history.map(h => h.total); const chartUrl = createChartUrl(chartDataPoints, 'line', `أداء المحفظة - ${periodLabel}`, chartLabels, 'قيمة المحفظة ($)'); const pnlSign = stats.pnl >= 0 ? '+' : ''; const emoji = stats.pnl >= 0 ? '🟢⬆️' : '🔴⬇️'; let caption = `📊 *تحليل أداء المحفظة \\| ${sanitizeMarkdownV2(periodLabel)}*\n\n`; caption += `📈 *النتيجة:* ${emoji} \`$${sanitizeMarkdownV2(pnlSign)}${sanitizeMarkdownV2(formatNumber(stats.pnl))}\` \\(\`${sanitizeMarkdownV2(pnlSign)}${sanitizeMarkdownV2(formatNumber(stats.pnlPercent))}%\`\\)\n`; caption += `*التغير الصافي: من \`$${sanitizeMarkdownV2(formatNumber(stats.startValue))}\` إلى \`$${sanitizeMarkdownV2(formatNumber(stats.endValue))}\`*\n\n`; caption += `*📝 مقارنة معيارية \\(Benchmark\\):*\n`; caption += `▪️ *أداء محفظتك:* \`${sanitizeMarkdownV2(stats.pnlPercent >= 0 ? '+' : '')}${sanitizeMarkdownV2(formatNumber(stats.pnlPercent))}%\`\n`; caption += `▪️ *أداء عملة BTC:* ${btcPerformanceText}\n`; caption += `${benchmarkComparison}\n\n`; caption += `*📈 مؤشرات الأداء الرئيسية:*\n`; caption += `▪️ *أفضل يوم:* \`+${sanitizeMarkdownV2(formatNumber(stats.bestDayChange))}%\`\n`; caption += `▪️ *أسوأ يوم:* \`${sanitizeMarkdownV2(formatNumber(stats.worstDayChange))}%\`\n`; caption += `▪️ *مستوى التقلب:* ${sanitizeMarkdownV2(stats.volText)}`; return { caption, chartUrl }; }
 
-// *** NEW V146.0: Formatting functions for new features ***
 function formatMarketContextCard(context) {
     if (!context || context.error) return "";
     const { trend, trendEmoji, volume, volumeEmoji, conclusion } = context;
@@ -588,10 +586,7 @@ async function formatPulseDashboard() {
         msg += `*${actionEmoji} ${sanitizeMarkdownV2(log.asset)}* \\| \`${sanitizeMarkdownV2(new Date(log.signalTime).toLocaleTimeString('ar-EG'))}\`\n`;
         msg += `  \\- *زمن الاستجابة الإجمالي:* \`${sanitizeMarkdownV2(formatNumber(totalLatency, 2))} ثانية\` ${colorEmoji}\n`;
         msg += `  \\- *تكلفة الصفقة:* \`$${sanitizeMarkdownV2(formatNumber(log.tradeValue))}\`\n`;
-        // Note: Slippage calculation is not possible without an external signal source price.
-        // The "tradeValue" is used as a proxy for the cost/impact of the trade.
         msg += `  \\- *الانزلاق السعري:* \`غير متاح حاليًا\`\n`;
-        // *** HOTFIX V146.1: Corrected syntax from double quotes to template literal backticks ***
         msg += `  \\- *سلسلة التأخير:* \`اكتشاف\` → \`${sanitizeMarkdownV2((log.analysisTime - log.signalTime) / 1000)}s\` → \`إشعار\`\n`;
         msg += "━━━━━━━━━━━━━━━━━━━━\n";
     }
@@ -648,7 +643,6 @@ async function getTechnicalAnalysis(instId) { const candleData = (await getHisto
 function calculatePerformanceStats(history) { if (history.length < 2) return null; const values = history.map(h => h.total); const startValue = values[0]; const endValue = values[values.length - 1]; const pnl = endValue - startValue; const pnlPercent = (startValue > 0) ? (pnl / startValue) * 100 : 0; const maxValue = Math.max(...values); const minValue = Math.min(...values); const avgValue = values.reduce((sum, val) => sum + val, 0) / values.length; const dailyReturns = []; for (let i = 1; i < values.length; i++) { dailyReturns.push((values[i] - values[i - 1]) / values[i - 1]); } const bestDayChange = dailyReturns.length > 0 ? Math.max(...dailyReturns) * 100 : 0; const worstDayChange = dailyReturns.length > 0 ? Math.min(...dailyReturns) * 100 : 0; const avgReturn = dailyReturns.length > 0 ? dailyReturns.reduce((sum, ret) => sum + ret, 0) / dailyReturns.length : 0; const volatility = dailyReturns.length > 0 ? Math.sqrt(dailyReturns.map(x => Math.pow(x - avgReturn, 2)).reduce((a, b) => a + b) / dailyReturns.length) * 100 : 0; let volText = "متوسط"; if(volatility < 1) volText = "منخفض"; if(volatility > 5) volText = "مرتفع"; return { startValue, endValue, pnl, pnlPercent, maxValue, minValue, avgValue, bestDayChange, worstDayChange, volatility, volText }; }
 function createChartUrl(data, type = 'line', title = '', labels = [], dataLabel = '') { if (!data || data.length === 0) return null; const pnl = data[data.length - 1] - data[0]; const chartColor = pnl >= 0 ? 'rgb(75, 192, 75)' : 'rgb(255, 99, 132)'; const chartBgColor = pnl >= 0 ? 'rgba(75, 192, 75, 0.2)' : 'rgba(255, 99, 132, 0.2)'; const chartConfig = { type: 'line', data: { labels: labels, datasets: [{ label: dataLabel, data: data, fill: true, backgroundColor: chartBgColor, borderColor: chartColor, tension: 0.1 }] }, options: { title: { display: true, text: title } } }; return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&backgroundColor=white`; }
 
-// *** NEW V146.0: Function to get market context for a trade ***
 async function getMarketContext(instId) {
     try {
         const candles = await getHistoricalCandles(instId, '1D', 51);
@@ -1055,7 +1049,6 @@ async function updatePositionAndAnalyze(asset, amountChange, price, newTotalAmou
     return { analysisResult };
 }
 
-// *** MODIFIED V146.0: Integrated latency tracking and market context ***
 async function monitorBalanceChanges(signalTime = Date.now()) {
     if (isProcessingBalance) {
         await sendDebugMessage("Balance check skipped: a process is already running.");
@@ -1102,12 +1095,10 @@ async function monitorBalanceChanges(signalTime = Date.now()) {
             stateNeedsUpdate = true;
             await sendDebugMessage(`Detected change for ${asset}: ${difference}`);
             
-            // --- Latency & Context Start (V146.0) ---
             const analysisTimeStart = Date.now();
             const marketContext = await getMarketContext(`${asset}-USDT`);
             const { analysisResult } = await updatePositionAndAnalyze(asset, difference, priceData.price, currAmount, oldTotalValue);
             const analysisTimeEnd = Date.now();
-            // --- Latency & Context End (V146.0) ---
 
             if (analysisResult.type === 'none') continue;
             const tradeValue = Math.abs(difference) * priceData.price;
@@ -1128,7 +1119,7 @@ async function monitorBalanceChanges(signalTime = Date.now()) {
                 newCashPercent, 
                 oldUsdtValue, 
                 position: analysisResult.data.position,
-                marketContext // Pass context to formatting functions
+                marketContext
             };
             
             const settings = await loadSettings();
@@ -1143,39 +1134,54 @@ async function monitorBalanceChanges(signalTime = Date.now()) {
                 }
             };
 
+            // =================================================================
+            // START: FIXED NOTIFICATION LOGIC
+            // =================================================================
             if (analysisResult.type === 'buy') {
                 privateMessage = formatPrivateBuy(baseDetails);
                 publicMessage = formatPublicBuy(baseDetails);
+                // Always send private message to owner
                 await sendMessageSafely(AUTHORIZED_USER_ID, privateMessage);
+                // If autopost is on, send public message to channel
                 if (settings.autoPostToChannel) {
                     await sendMessageSafely(TARGET_CHANNEL_ID, publicMessage);
                 }
             } else if (analysisResult.type === 'sell') {
                 privateMessage = formatPrivateSell(baseDetails);
                 publicMessage = formatPublicSell(baseDetails);
+                // Always send private message to owner
                 await sendMessageSafely(AUTHORIZED_USER_ID, privateMessage);
+                // If autopost is on, send public message to channel
                 if (settings.autoPostToChannel) {
                     await sendMessageSafely(TARGET_CHANNEL_ID, publicMessage);
                 }
             } else if (analysisResult.type === 'close') {
-                // Pass context to close report
                 analysisResult.data.marketContext = marketContext;
                 privateMessage = formatPrivateCloseReport(analysisResult.data);
                 publicMessage = formatPublicClose(analysisResult.data);
+
+                // Always send the private report to the owner first.
+                await sendMessageSafely(AUTHORIZED_USER_ID, privateMessage);
+
+                // Then, handle the public posting.
                 if (settings.autoPostToChannel) {
                     await sendMessageSafely(TARGET_CHANNEL_ID, publicMessage);
-                    await sendMessageSafely(AUTHORIZED_USER_ID, privateMessage);
                 } else {
+                    // If autopost is off, ask the owner if they want to publish it manually.
                     const confirmationKeyboard = new InlineKeyboard()
                         .text("✅ نعم، انشر التقرير", "publish_report")
                         .text("❌ لا، تجاهل", "ignore_report");
+                    // Use a hidden marker to store the public message content in the confirmation message.
                     const hiddenMarker = `\n<report>${JSON.stringify(publicMessage)}</report>`;
-                    const confirmationMessage = `*تم إغلاق المركز بنجاح\\. هل تود نشر الملخص في القناة؟*\n\n${privateMessage}${hiddenMarker}`;
+                    // The confirmation message is now separate from the main report.
+                    const confirmationMessage = `*هل تود نشر ملخص الإغلاق في القناة؟*${hiddenMarker}`;
                     await sendMessageSafely(AUTHORIZED_USER_ID, confirmationMessage, { reply_markup: confirmationKeyboard });
                 }
             }
+            // =================================================================
+            // END: FIXED NOTIFICATION LOGIC
+            // =================================================================
 
-            // --- Save Latency Log (V146.0) ---
             const notificationTime = Date.now();
             await saveLatencyLog({
                 signalTime: new Date(signalTime),
@@ -1271,7 +1277,6 @@ async function monitorVirtualTrades() { const activeTrades = await getActiveVirt
 async function formatDailyCopyReport() { const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000); const closedTrades = await getCollection("tradeHistory").find({ closedAt: { $gte: twentyFourHoursAgo } }).toArray(); if (closedTrades.length === 0) { return "📊 لم يتم إغلاق أي صفقات في الـ 24 ساعة الماضية."; } const today = new Date(); const dateString = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`; let report = `📊 تقرير النسخ اليومي – خلال الـ24 ساعة الماضية\n🗓 التاريخ: ${dateString}\n\n`; let totalPnlWeightedSum = 0; let totalWeight = 0; for (const trade of closedTrades) { if (trade.pnlPercent === undefined || trade.entryCapitalPercent === undefined) continue; const resultEmoji = trade.pnlPercent >= 0 ? '🔼' : '🔽'; report += `🔸اسم العملة: ${trade.asset}\n`; report += `🔸 نسبة الدخول من رأس المال: ${formatNumber(trade.entryCapitalPercent)}%\n`; report += `🔸 متوسط سعر الشراء: ${formatSmart(trade.avgBuyPrice)}\n`; report += `🔸 سعر الخروج: ${formatSmart(trade.avgSellPrice)}\n`; report += `🔸 نسبة الخروج من الكمية: ${formatNumber(trade.exitQuantityPercent)}%\n`; report += `🔸 النتيجة: ${trade.pnlPercent >= 0 ? '+' : ''}${formatNumber(trade.pnlPercent)}% ${resultEmoji}\n\n`; if (trade.entryCapitalPercent > 0) { totalPnlWeightedSum += trade.pnlPercent * trade.entryCapitalPercent; totalWeight += trade.entryCapitalPercent; } } const totalPnl = totalWeight > 0 ? totalPnlWeightedSum / totalWeight : 0; const totalPnlEmoji = totalPnl >= 0 ? '📈' : '📉'; report += `إجمالي الربح الحالي خدمة النسخ: ${totalPnl >= 0 ? '+' : ''}${formatNumber(totalPnl, 2)}% ${totalPnlEmoji}\n\n`; report += `✍️ يمكنك الدخول في اي وقت تراه مناسب، الخدمة مفتوحة للجميع\n\n`; report += `📢 قناة التحديثات الرسمية:\n@abusalamachart\n\n`; report += `🌐 رابط النسخ المباشر:\n🏦 https://t.me/abusalamachart`; return report; }
 async function runDailyReportJob() { try { await sendDebugMessage("Running daily copy-trading report job..."); const report = await formatDailyCopyReport(); if (report.startsWith("📊 لم يتم إغلاق أي صفقات")) { await bot.api.sendMessage(AUTHORIZED_USER_ID, report); } else { await bot.api.sendMessage(process.env.TARGET_CHANNEL_ID, report); await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ تم إرسال تقرير النسخ اليومي إلى القناة بنجاح."); } } catch(e) { console.error("Error in runDailyReportJob:", e); await bot.api.sendMessage(AUTHORIZED_USER_ID, `❌ حدث خطأ أثناء إنشاء تقرير النسخ اليومي: ${e.message}`); } }
 
-// *** MODIFIED V146.3: Refactored to return a string instead of sending a message ***
 async function formatCumulativeReport(asset) {
     try {
         const trades = await getCollection("tradeHistory").find({ asset: asset }).toArray();
@@ -1316,7 +1321,6 @@ async function formatCumulativeReport(asset) {
 // =================================================================
 // SECTION 6: BOT KEYBOARDS & MENUS
 // =================================================================
-// *** MODIFIED V146.5: Restored "Review Trades" and all other buttons ***
 const mainKeyboard = new Keyboard()
     .text("📊 عرض المحفظة").text("📈 أداء المحفظة").text("🚀 تحليل السوق").row()
     .text("📜 تقرير شامل").text("🔍 مراجعة الصفقات").text("📈 تحليل تراكمي").row()
@@ -1654,11 +1658,11 @@ async function handleCallbackQuery(ctx, data) {
                         const reportContentString = originalText.substring(reportMarkerStart + 8, reportMarkerEnd);
                         const reportContent = JSON.parse(reportContentString);
                         await bot.api.sendMessage(process.env.TARGET_CHANNEL_ID, reportContent, { parse_mode: "MarkdownV2" });
-                        const newText = privatePart.replace('*تم إغلاق المركز بنجاح\\. هل تود نشر الملخص في القناة؟*', '✅ *تم نشر التقرير بنجاح في القناة\\.*');
+                        const newText = privatePart.replace('*هل تود نشر ملخص الإغلاق في القناة؟*', '✅ *تم نشر التقرير بنجاح في القناة\\.*');
                         await ctx.editMessageText(newText, { reply_markup: undefined, parse_mode: 'MarkdownV2' });
                     }
                 } else {
-                    const newText = privatePart.replace('*تم إغلاق المركز بنجاح\\. هل تود نشر الملخص في القناة؟*', '❌ *تم تجاهل نشر التقرير\\.*');
+                    const newText = privatePart.replace('*هل تود نشر ملخص الإغلاق في القناة؟*', '❌ *تم تجاهل نشر التقرير\\.*');
                     await ctx.editMessageText(newText, { reply_markup: undefined, parse_mode: 'MarkdownV2' });
                 }
             }
@@ -1780,7 +1784,7 @@ async function handleWaitingState(ctx, state, text) {
                     await getCollection("configs").deleteMany({});
                     await getCollection("virtualTrades").deleteMany({});
                     await getCollection("tradeHistory").deleteMany({});
-                    await getCollection("latencyLogs").deleteMany({}); // *** NEW V146.0: Delete latency logs ***
+                    await getCollection("latencyLogs").deleteMany({});
                     await ctx.reply("✅ تم حذف جميع بياناتك\\.");
                 } else {
                     await ctx.reply("❌ تم إلغاء الحذف\\.");
@@ -1839,7 +1843,6 @@ async function handleWaitingState(ctx, state, text) {
 // =================================================================
 app.get("/healthcheck", (req, res) => res.status(200).send("OK"));
 
-// *** NEW V146.3: Unified Daily Report Function ***
 async function generateUnifiedDailyReport() {
     try {
         let fullReport = `📜 *التقرير اليومي الشامل*\n*بتاريخ: ${sanitizeMarkdownV2(new Date().toLocaleString("ar-EG", { timeZone: "Africa/Cairo" }))}*\n\n`;
@@ -1928,7 +1931,7 @@ async function startBot() {
         // Start real-time monitoring
         connectToOKXSocket();
 
-        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v146\\.5 \\- UI Restoration II\\)*\n\n\\- تم إصلاح واجهة الأزرار وإعادة زر مراجعة الصفقات\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
+        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v146\\.5 \\- Logic Fix\\)*\n\n\\- تم إصلاح منطق إرسال الإشعارات لضمان وصول جميع التقارير الخاصة والعامة بشكل صحيح\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
 
     } catch (e) {
         console.error("FATAL: Could not start the bot.", e);
@@ -1960,7 +1963,7 @@ function connectToOKXSocket() {
     });
 
     ws.on('message', async (data) => {
-        const signalTime = Date.now(); // *** NEW V146.0: Capture signal time here ***
+        const signalTime = Date.now();
         const rawData = data.toString();
 
         if (rawData === 'pong') {
@@ -1983,7 +1986,6 @@ function connectToOKXSocket() {
             if (message.arg?.channel === 'account' && message.data) {
                 console.log("Real-time balance update received via WebSocket.");
                 await sendDebugMessage("تحديث لحظي للرصيد، جاري المعالجة...");
-                // Pass the signal time to the handler
                 await monitorBalanceChanges(signalTime);
             }
 
