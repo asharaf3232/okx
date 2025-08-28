@@ -1,5 +1,5 @@
 // =================================================================
-// Advanced Analytics Bot - v147.0 (AI Performance Coach)
+// Advanced Analytics Bot - v146.5 (UI Restoration II)
 // =================================================================
 // --- IMPORTS ---
 const express = require("express");
@@ -705,8 +705,8 @@ async function getMarketContext(instId) {
 // --- AI Analysis Services ---
 async function analyzeWithAI(prompt) {
     try {
-        // The generic system prompt is now part of the specific prompt generation
-        const result = await geminiModel.generateContent(prompt);
+        const fullPrompt = `أنت محلل مالي خبير ومستشار استثماري متخصص في العملات الرقمية، تتحدث بالعربية الفصحى، وتقدم تحليلات دقيقة وموجزة. في نهاية كل تحليل، يجب عليك إضافة السطر التالي بالضبط كما هو: "هذا التحليل لأغراض معلوماتية فقط وليس توصية مالية."\n\n---\n\nالطلب: ${prompt}`;
+        const result = await geminiModel.generateContent(fullPrompt);
         const response = await result.response;
         if (response.promptFeedback?.blockReason) {
             console.error("AI Analysis Blocked:", response.promptFeedback.blockReason);
@@ -749,69 +749,65 @@ function truncate(s, max = 12000) {
     return s.length > max ? s.slice(0, max) + "..." : s; 
 }
 
-// *** MODIFIED V147.0: AI now acts as a Performance Coach ***
 async function getAIAnalysisForAsset(asset) {
     const instId = `${asset}-USDT`;
-    const [details, tech, tradeHistory, fundamentals] = await Promise.all([
+    const [details, tech, perf, fundamentals] = await Promise.all([
         getInstrumentDetails(instId),
         getTechnicalAnalysis(instId),
-        getCollection("tradeHistory").find({ asset: asset }).sort({ closedAt: -1 }).limit(10).toArray(),
+        getHistoricalPerformance(asset),
         getCoinFundamentals(asset)
     ]);
 
     if (details.error) return `لا يمكن تحليل ${asset}: ${details.error}`;
     if (tech.error) return `لا يمكن تحليل ${asset}: ${tech.error}`;
+    if (!perf) return `لا يمكن تحليل ${asset}: فشل جلب الأداء التاريخي.`;
 
-    let historySummary = "لا توجد صفقات سابقة مسجلة.";
-    if (tradeHistory.length > 0) {
-        historySummary = tradeHistory.map((trade, index) => {
-            const pnlSign = trade.pnlPercent >= 0 ? '+' : '';
-            return `الصفقة ${index + 1}: النتيجة ${pnlSign}${formatNumber(trade.pnlPercent)}% بعد ${formatNumber(trade.durationDays, 1)} يوم.`;
-        }).join('\n');
+    let fundamentalSection = "";
+    if (fundamentals && !fundamentals.error) {
+        fundamentalSection = `
+    **1. بيانات المشروع الأساسية (من مصادر خارجية):**
+    - **الترتيب السوقي:** ${fundamentals.rank || 'غير معروف'}
+    - **الفئة:** ${fundamentals.category || 'غير معروف'}
+    - **وصف المشروع:** ${fundamentals.description || 'لا يوجد'}
+        `;
+    } else {
+        fundamentalSection = `
+    **1. بيانات المشروع الأساسية:**
+    - لم يتم العثور على بيانات أساسية محدثة للمشروع. إذا كانت لديك معرفة مسبقة بهذا المشروع، يرجى استخدامها في تحليلك.
+        `;
     }
 
+    let riskProfile = "متوسط";
+    if (tech.rsi > 70) riskProfile = "مرتفع (تشبع شرائي)";
+    if (tech.rsi < 30) riskProfile = "منخفض (تشبع بيعي)";
+
     const basePrompt = `
-    أنت محلل مالي خبير ومدرب أداء شخصي متخصص في العملات الرقمية. لهجتك احترافية، ثاقبة، ومصممة خصيصًا لتاريخ المستخدم الشخصي. تتحدث بالعربية الفصحى. اختتم كل تحليل بالسطر التالي بالضبط: "هذا التحليل لأغراض معلوماتية فقط وليس توصية مالية."
-
-    ---
-
-    **العملة المطلوب تحليلها:** ${asset}
-
-    **1. البيانات الأساسية للمشروع (من مصادر خارجية):**
-    - الترتيب السوقي: ${fundamentals.rank || 'غير معروف'}
-    - الفئة: ${fundamentals.category || 'غير معروف'}
-    - وصف المشروع: ${fundamentals.description || 'لا يوجد'}
-
+    أنت محلل خبير. قم بتحليل عملة ${asset} بشكل شامل يدمج بين التحليل الأساسي والفني وتاريخي الشخصي معها.
+    ${fundamentalSection}
     **2. البيانات الفنية الحالية:**
-    - السعر الحالي: $${formatSmart(details.price)}
-    - أعلى سعر (24 ساعة): $${formatSmart(details.high24h)}
-    - أدنى سعر (24 ساعة): $${formatSmart(details.low24h)}
-    - مؤشر القوة النسبية (14 يوم): ${tech.rsi ? formatNumber(tech.rsi) : 'N/A'}
-    - السعر مقابل المتوسطات المتحركة: حاليًا ${details.price > tech.sma20 ? 'فوق' : 'تحت'} SMA20 و ${details.price > tech.sma50 ? 'فوق' : 'تحت'} SMA50.
+    - **السعر الحالي:** $${formatSmart(details.price)}
+    - **أعلى 24 ساعة:** $${formatSmart(details.high24h)}
+    - **أدنى 24 ساعة:** $${formatSmart(details.low24h)}
+    - **RSI (14 يوم):** ${tech.rsi ? formatNumber(tech.rsi) : 'N/A'}
+    - **ملف المخاطرة الفني:** ${riskProfile}
+    - **علاقة السعر بالمتوسطات:** السعر حاليًا ${details.price > tech.sma20 ? 'فوق' : 'تحت'} SMA20 و ${details.price > tech.sma50 ? 'فوق' : 'تحت'} SMA50.
 
-    **3. سجلي التداولي المفصل مع عملة ${asset} (آخر 10 صفقات):**
-    ${historySummary}
+    **3. بياناتي التاريخية مع العملة:**
+    - **عدد صفقاتي السابقة:** ${perf.tradeCount}
+    - **معدل نجاحي:** ${perf.tradeCount > 0 ? formatNumber((perf.winningTrades / perf.tradeCount) * 100) : '0'}%
 
-    **التحليل المطلوب:**
-    قدم تحليلًا متكاملاً وموجزًا في فقرة واحدة.
-    1. ابدأ بوصف موجز للمشروع ووضعه الفني الحالي.
-    2. الأهم من ذلك، قم بتحليل سجلي التداولي الشخصي مع ${asset}. حدد أي أنماط واضحة. على سبيل المثال: هل أميل إلى بيع الصفقات الرابحة مبكرًا؟ هل أجني الأرباح بفعالية؟ هل أنا منضبط في وقف الخسائر؟
-    3. اختتم بتوصية واضحة وشخصية (شراء، بيع، أو مراقبة) تدمج بين بيانات السوق والأنماط التي حددتها في أدائي الشخصي. يجب أن تكون توصيتك نتيجة مباشرة لهذا التحليل المدمج.
+    **المطلوب:**
+    قدم تحليلًا متكاملاً في فقرة واحدة. ابدأ بوصف المشروع ومكانته (باستخدام البيانات المتاحة أو معرفتك الخاصة)، ثم اربطه بالوضع الفني الحالي، وأخيرًا، قدم توصية واضحة (شراء/بيع/مراقبة) مع الأخذ في الاعتبار تاريخي الشخصي مع العملة.
     `;
 
     return await analyzeWithAI(truncate(basePrompt));
 }
 
-
 async function getAIAnalysisForPortfolio(assets, total, capital) {
     const topAssets = assets.slice(0, 5).map(a => `${a.asset} (يمثل ${formatNumber((a.value/total)*100)}%)`).join('، ');
     const pnlPercent = capital > 0 ? ((total - capital) / capital) * 100 : 0;
     const prompt = `
-    أنت محلل مالي خبير ومستشار استثماري متخصص في العملات الرقمية، تتحدث بالعربية الفصحى، وتقدم تحليلات دقيقة وموجزة. في نهاية كل تحليل، يجب عليك إضافة السطر التالي بالضبط كما هو: "هذا التحليل لأغراض معلوماتية فقط وليس توصية مالية."
-
-    ---
-    
-    **الطلب:** قم بتحليل المحفظة الاستثمارية التالية:
+    قم بتحليل المحفظة الاستثمارية التالية:
     - القيمة الإجمالية: $${formatNumber(total)}
     - رأس المال الأصلي: $${formatNumber(capital)}
     - إجمالي الربح/الخسارة غير المحقق: ${formatNumber(pnlPercent)}%
@@ -861,13 +857,12 @@ async function getAIGeneralNewsSummary() {
 
     const articlesForPrompt = newsArticles.map(a => `Source: ${a.source}\nTitle: ${a.title}\nContent: ${a.content}`).join('\n\n---\n\n');
 
-    const prompt = `أنت محرر أخبار خبير. القائمة التالية تحتوي على مقالات إخبارية حديثة، على الأرجح باللغة الإنجليزية. مهمتك هي:
-1. تحديد أهم 3-4 أخبار متعلقة بسوق العملات الرقمية.
-2. تلخيصها بإيجاز باللغة العربية الاحترافية.
-3. بناءً على هذه الملخصات، اكتب فقرة قصيرة باللغة العربية حول الشعور العام للسوق (على سبيل المثال، صعودي، هبوطي، غير مؤكد).
-4. اختتم كل تحليل بالسطر التالي بالضبط: "هذا التحليل لأغراض معلوماتية فقط وليس توصية مالية."
+    const prompt = `You are an expert news editor. The following is a list of recent news articles, likely in English. Your task is to:
+1. Identify the 3-4 most important news items related to the cryptocurrency market.
+2. Summarize them concisely in PROFESSIONAL ARABIC.
+3. Based on these summaries, write a short paragraph in ARABIC about the general market sentiment (e.g., bullish, bearish, uncertain).
 
-مقالات الأخبار:\n${articlesForPrompt}`;
+News Articles:\n${articlesForPrompt}`;
 
     return await analyzeWithAI(prompt);
 }
@@ -891,13 +886,12 @@ async function getAIPortfolioNewsSummary() {
 
     const articlesForPrompt = newsArticles.map(a => `Source: ${a.source}\nTitle: ${a.title}\nContent: ${a.content}`).join('\n\n---\n\n');
 
-    const prompt = `أنت مستشار مالي شخصي. تحتوي محفظتي على الأصول التالية: ${assetSymbols}. فيما يلي قائمة بالمقالات الإخبارية الحديثة، على الأرجح باللغة الإنجليزية. مهمتك هي:
-1. تلخيص أهم الأخبار من القائمة التي قد تؤثر على استثماراتي.
-2. شرح التأثير المحتمل لكل خبر ببساطة.
-3. يجب أن يكون كل ما تكتبه باللغة العربية الاحترافية.
-4. اختتم كل تحليل بالسطر التالي بالضبط: "هذا التحليل لأغراض معلوماتية فقط وليس توصية مالية."
+    const prompt = `You are a personal financial advisor. My portfolio contains the following assets: ${assetSymbols}. Below is a list of recent news articles, likely in English. Your task is to:
+1. Summarize the most important news from the list that could affect my investments.
+2. Explain the potential impact of each news item simply.
+3. All your output MUST be in PROFESSIONAL ARABIC.
 
-مقالات الأخبار:\n${articlesForPrompt}`;
+News Articles:\n${articlesForPrompt}`;
 
     return await analyzeWithAI(prompt);
 }
@@ -1934,7 +1928,7 @@ async function startBot() {
         // Start real-time monitoring
         connectToOKXSocket();
 
-        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v147.0 \\- AI Performance Coach\\)*\n\n\\- تم ترقية الذكاء الاصطناعي ليصبح مدرب أداء شخصي\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
+        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v146\\.5 \\- UI Restoration II\\)*\n\n\\- تم إصلاح واجهة الأزرار وإعادة زر مراجعة الصفقات\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
 
     } catch (e) {
         console.error("FATAL: Could not start the bot.", e);
