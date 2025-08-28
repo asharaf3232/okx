@@ -1,5 +1,5 @@
 // =================================================================
-// Advanced Analytics Bot - v146.1 (Syntax Hotfix)
+// Advanced Analytics Bot - v146.2 (UI Restoration)
 // =================================================================
 // --- IMPORTS ---
 const express = require("express");
@@ -1276,13 +1276,12 @@ async function generateAndSendCumulativeReport(ctx, asset) { try { const trades 
 // =================================================================
 // SECTION 6: BOT KEYBOARDS & MENUS
 // =================================================================
-// *** MODIFIED V146.0: Added new buttons to main keyboard ***
+// *** MODIFIED V146.2: Restored buttons and reorganized keyboard ***
 const mainKeyboard = new Keyboard()
-    .text("📊 عرض المحفظة").text("📈 أداء المحفظة").row()
-    .text("🚀 تحليل السوق").text("⏱️ لوحة النبض").row() // New button
-    .text("⚡ إحصائيات سريعة").text("📝 ملخص اليوم").row() // New button
-    .text("🔍 مراجعة الصفقات").text("🧠 تحليل بالذكاء الاصطناعي").row()
-    .text("💡 توصية افتراضية").text("⚙️ الإعدادات").row()
+    .text("📊 عرض المحفظة").text("📈 أداء المحفظة").text("🚀 تحليل السوق").row()
+    .text("⏱️ لوحة النبض").text("📝 ملخص اليوم").text("⚡ إحصائيات سريعة").row()
+    .text("🧠 تحليل بالذكاء الاصطناعي").text("📈 تحليل تراكمي").text("🔍 مراجعة الصفقات").row()
+    .text("💡 توصية افتراضية").text("🧮 حاسبة الربح والخسارة").text("⚙️ الإعدادات").row()
     .resized();
 
 const virtualTradeKeyboard = new InlineKeyboard()
@@ -1433,7 +1432,6 @@ async function handleTextMessage(ctx, text) {
                 await ctx.api.editMessageText(loadingMessage.chat_id, loadingMessage.id, marketMsg, { parse_mode: "MarkdownV2" });
                 break;
 
-            // *** NEW V146.0: Handler for Pulse Dashboard ***
             case "⏱️ لوحة النبض":
                 loadingMessage.id = (await ctx.reply("⏳ جاري جلب بيانات النبض اللحظي...")).message_id;
                 loadingMessage.chat_id = ctx.chat.id;
@@ -1441,7 +1439,6 @@ async function handleTextMessage(ctx, text) {
                 await ctx.api.editMessageText(loadingMessage.chat_id, loadingMessage.id, pulseMsg, { parse_mode: "MarkdownV2" });
                 break;
 
-            // *** NEW V146.0: Handler for End of Day Summary ***
             case "📝 ملخص اليوم":
                 loadingMessage.id = (await ctx.reply("⏳ جاري إعداد ملخص آخر 24 ساعة...")).message_id;
                 loadingMessage.chat_id = ctx.chat.id;
@@ -1485,14 +1482,17 @@ async function handleTextMessage(ctx, text) {
                 await ctx.reply("اختر الفترة الزمنية لعرض تقرير الأداء:", { reply_markup: performanceKeyboard });
                 break;
             
-            case "📈 تحليل تراكمي": // This was missing a handler, now it's a placeholder
-                await ctx.reply("✍️ هذه الميزة قيد التطوير حاليًا\\. للتحليل التراكمي لصفقاتك السابقة في عملة معينة، يرجى استخدام ميزة *تحليل بالذكاء الاصطناعي* واطلب تحليل العملة\\.", {parse_mode: "MarkdownV2"});
+            // *** MODIFIED V146.2: Restored full functionality ***
+            case "📈 تحليل تراكمي":
+                waitingState = 'cumulative_analysis_asset';
+                await ctx.reply("✍️ يرجى إرسال رمز العملة التي تود تحليلها \\(مثال: `BTC`\\)\\.", {parse_mode: "MarkdownV2"});
                 break;
 
             case "🧠 تحليل بالذكاء الاصطناعي":
                 await ctx.reply("اختر نوع التحليل الذي تريده:", { reply_markup: aiKeyboard });
                 break;
 
+            // *** MODIFIED V146.2: Restored full functionality ***
             case "🧮 حاسبة الربح والخسارة":
                 await ctx.reply("✍️ لحساب الربح/الخسارة، استخدم أمر `/pnl` بالصيغة التالية:\n`/pnl <سعر الشراء> <سعر البيع> <الكمية>`", {parse_mode: "MarkdownV2"});
                 break;
@@ -1660,6 +1660,12 @@ async function handleWaitingState(ctx, state, text) {
                 const sanitizedResponse = sanitizeMarkdownV2(aiResponse);
                 await ctx.api.editMessageText(loading.chat.id, loading.message_id, `*🧠 تحليل الذكاء الاصطناعي \\| ${sanitizeMarkdownV2(coin)}*\n\n${sanitizedResponse}`, { parse_mode: "MarkdownV2" });
                 break;
+            
+            // *** MODIFIED V146.2: Restored full functionality ***
+            case 'cumulative_analysis_asset':
+                await generateAndSendCumulativeReport(ctx, text.toUpperCase());
+                break;
+
             case 'add_virtual_trade':
                 try {
                     const lines = text.split('\n').map(line => line.trim());
@@ -1829,7 +1835,7 @@ async function startBot() {
         // Start real-time monitoring
         connectToOKXSocket();
 
-        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v146\\.1 \\- Syntax Hotfix\\)*\n\n\\- تم إصلاح خطأ برمجي في لوحة النبض\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
+        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v146\\.2 \\- UI Restoration\\)*\n\n\\- تم إعادة الأزرار المحذوفة وتنظيم القائمة الرئيسية\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
 
     } catch (e) {
         console.error("FATAL: Could not start the bot.", e);
