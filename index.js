@@ -1,5 +1,5 @@
 // =================================================================
-// Advanced Analytics Bot - v147.5 (Markdown Parse Fix)
+// Advanced Analytics Bot - v147.6 (Settings & Alerts Fix)
 // =================================================================
 // --- IMPORTS ---
 const express = require("express");
@@ -1299,13 +1299,14 @@ const virtualTradeKeyboard = new InlineKeyboard()
     .text("➕ إضافة توصية جديدة", "add_virtual_trade").row()
     .text("📈 متابعة التوصيات الحية", "track_virtual_trades");
 
+// --- NEW V147.6: Restructured Settings Menus ---
+
 async function sendSettingsMenu(ctx) {
     const settings = await loadSettings();
     const settingsKeyboard = new InlineKeyboard()
         .text("💰 تعيين رأس المال", "set_capital")
         .text("💼 عرض المراكز المفتوحة", "view_positions").row()
-        .text("🚨 إدارة تنبيهات الحركة", "manage_movement_alerts")
-        .text("🗑️ حذف تنبيه سعر", "delete_alert").row()
+        .text("🚨 إدارة التنبيهات", "manage_alerts_menu").row() // Centralized alerts menu
         .text(`📰 الملخص اليومي: ${settings.dailySummary ? '✅' : '❌'}`, "toggle_summary")
         .text(`🚀 النشر للقناة: ${settings.autoPostToChannel ? '✅' : '❌'}`, "toggle_autopost").row()
         .text(`🐞 وضع التشخيص: ${settings.debugMode ? '✅' : '❌'}`, "toggle_debug")
@@ -1326,13 +1327,34 @@ async function sendSettingsMenu(ctx) {
     }
 }
 
+async function sendAlertsMenu(ctx) {
+    const text = `🚨 *إدارة التنبيهات*\n\nاختر نوع التنبيه الذي تود إدارته:`;
+    const keyboard = new InlineKeyboard()
+        .text("🎯 تنبيهات السعر", "manage_price_alerts")
+        .text("📈 تنبيهات الحركة", "manage_movement_alerts").row()
+        .text("🔙 العودة للإعدادات", "back_to_settings");
+
+    await ctx.editMessageText(text, { parse_mode: "MarkdownV2", reply_markup: keyboard });
+}
+
+async function sendPriceAlertsMenu(ctx) {
+    const text = `🎯 *إدارة تنبيهات السعر*\n\nتنبيهات السعر تخبرك عندما يتجاوز سعر عملة ما حدًا معينًا تحدده أنت\\.`;
+    const keyboard = new InlineKeyboard()
+        .text("➕ إضافة تنبيه سعر", "add_price_alert")
+        .text("🗑️ حذف تنبيه سعر", "delete_price_alert").row()
+        .text("🔙 العودة", "manage_alerts_menu");
+    
+    await ctx.editMessageText(text, { parse_mode: "MarkdownV2", reply_markup: keyboard });
+}
+
+
 async function sendMovementAlertsMenu(ctx) {
     const alertSettings = await loadAlertSettings();
-    const text = `🚨 *إدارة تنبيهات حركة الأسعار*\n\n\\- *النسبة العامة الحالية:* \`${alertSettings.global}%\`\\.\n\\- يمكنك تعيين نسبة مختلفة لعملة معينة\\.`;
+    const text = `📈 *إدارة تنبيهات حركة الأسعار*\n\nتنبيهات الحركة تخبرك تلقائيًا عندما يتحرك سعر أصل في محفظتك بنسبة مئوية معينة خلال فترة قصيرة\\.\n\n\\- *النسبة العامة الحالية:* \`${alertSettings.global}%\`\\.\n\\- يمكنك تعيين نسبة مختلفة لعملة معينة\\.`;
     const keyboard = new InlineKeyboard()
         .text("📊 تعديل النسبة العامة", "set_global_alert")
         .text("💎 تعديل نسبة عملة", "set_coin_alert").row()
-        .text("🔙 العودة للإعدادات", "back_to_settings");
+        .text("🔙 العودة", "manage_alerts_menu");
     await ctx.editMessageText(text, { parse_mode: "MarkdownV2", reply_markup: keyboard });
 }
 
@@ -1662,11 +1684,32 @@ async function handleCallbackQuery(ctx, data) {
                 break;
             case "set_capital": waitingState = 'set_capital'; await ctx.editMessageText("💰 يرجى إرسال المبلغ الجديد لرأس المال \\(رقم فقط\\)\\."); break;
             case "back_to_settings": await sendSettingsMenu(ctx); break;
+            
+            // --- NEW V147.6: Alert Menu Navigation ---
+            case "manage_alerts_menu": await sendAlertsMenu(ctx); break;
+            case "manage_price_alerts": await sendPriceAlertsMenu(ctx); break;
             case "manage_movement_alerts": await sendMovementAlertsMenu(ctx); break;
+            
+            case "add_price_alert": waitingState = 'set_alert'; await ctx.editMessageText("✍️ يرجى إرسال تفاصيل التنبيه في سطر واحد\\.\n*مثال:*\n`BTC > 70000`\nأو\n`ETH < 3000`", { parse_mode: "MarkdownV2" }); break;
+            case "delete_price_alert": 
+                const alerts = await loadAlerts();
+                if (alerts.length === 0) { 
+                    await ctx.editMessageText("ℹ️ لا توجد تنبيهات سعر مسجلة لحذفها\\.", { reply_markup: new InlineKeyboard().text("🔙 العودة", "manage_price_alerts") }); 
+                    break; 
+                }
+                let alertMsg = "🗑️ *اختر التنبيه لحذفه:*\n\n";
+                alerts.forEach((alert, i) => { 
+                    alertMsg += `*${i + 1}\\.* \`${sanitizeMarkdownV2(alert.instId)} ${sanitizeMarkdownV2(alert.condition)} ${sanitizeMarkdownV2(alert.price)}\`\n`; 
+                });
+                alertMsg += "\n*أرسل رقم التنبيه الذي تود حذفه\\.*";
+                waitingState = 'delete_alert_number';
+                await ctx.editMessageText(alertMsg, { parse_mode: "MarkdownV2" });
+                break;
+
             case "set_global_alert": waitingState = 'set_global_alert_state'; await ctx.editMessageText("✍️ يرجى إرسال النسبة العامة الجديدة \\(مثال: `5`\\)\\."); break;
             case "set_coin_alert": waitingState = 'set_coin_alert_state'; await ctx.editMessageText("✍️ يرجى إرسال رمز العملة والنسبة\\.\n*مثال:*\n`BTC 2.5`"); break;
             case "view_positions": const positions = await loadPositions(); if (Object.keys(positions).length === 0) { await ctx.editMessageText("ℹ️ لا توجد مراكز مفتوحة\\.", { reply_markup: new InlineKeyboard().text("🔙 العودة للإعدادات", "back_to_settings") }); break; } let posMsg = "📄 *قائمة المراكز المفتوحة:*\n"; for (const symbol in positions) { const pos = positions[symbol]; posMsg += `\n\\- *${sanitizeMarkdownV2(symbol)}:* متوسط الشراء \`$${sanitizeMarkdownV2(formatSmart(pos.avgBuyPrice))}\``; } await ctx.editMessageText(posMsg, { parse_mode: "MarkdownV2", reply_markup: new InlineKeyboard().text("🔙 العودة للإعدادات", "back_to_settings") }); break;
-            case "delete_alert": const alerts = await loadAlerts(); if (alerts.length === 0) { await ctx.editMessageText("ℹ️ لا توجد تنبيهات مسجلة\\.", { reply_markup: new InlineKeyboard().text("🔙 العودة للإعدادات", "back_to_settings") }); break; } let alertMsg = "🗑️ *اختر التنبيه لحذفه:*\n\n"; alerts.forEach((alert, i) => { alertMsg += `*${i + 1}\\.* \`${sanitizeMarkdownV2(alert.instId)} ${sanitizeMarkdownV2(alert.condition)} ${sanitizeMarkdownV2(alert.price)}\`\n`; }); alertMsg += "\n*أرسل رقم التنبيه الذي تود حذفه\\.*"; waitingState = 'delete_alert_number'; await ctx.editMessageText(alertMsg, { parse_mode: "MarkdownV2" }); break;
+            
             case "toggle_summary": case "toggle_autopost": case "toggle_debug": case "toggle_technical_alerts":
                 const settings = await loadSettings();
                 if (data === 'toggle_summary') settings.dailySummary = !settings.dailySummary;
@@ -1914,7 +1957,7 @@ async function startBot() {
         // Start real-time monitoring
         connectToOKXSocket();
 
-        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v147\\.5 \\- Markdown Parse Fix\\)*\n\n\\- تم إصلاح خطأ تنسيق عرض التوصيات الافتراضية\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
+        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v147\\.6 \\- Settings & Alerts Fix\\)*\n\n\\- تم إصلاح قائمة الإعدادات وتفعيل جميع وظائف التنبيهات\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
 
     } catch (e) {
         console.error("FATAL: Could not start the bot.", e);
