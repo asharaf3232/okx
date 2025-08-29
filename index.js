@@ -713,144 +713,93 @@ async function analyzeWithAI(prompt, raw = false) {
     }
 }
 
-// --- AI Analysis Services ---
-async function analyzeWithAI(prompt, raw = false) {
-    try {
-        // This is the main system prompt that defines the AI's persona and rules.
-        // It's kept separate from the user's dynamic request for better control.
-        const fullPrompt = raw ? prompt : `أنت محلل مالي خبير ومستشار استثماري متخصص في العملات الرقمية، تتحدث بالعربية الفصحى، وتقدم تحليلات دقيقة وموجزة. في نهاية كل تحليل، يجب عليك إضافة السطر التالي بالضبط كما هو: "هذا التحليل لأغراض معلوماتية فقط وليس توصية مالية."\n\n---\n\nالطلب: ${prompt}`;
-        // In a real application, you would replace this with a call to the Gemini API
-        // const result = await geminiModel.generateContent(fullPrompt);
-        // const response = await result.response;
-        // For demonstration, we'll just log the prompt.
-        console.log("--- PROMPT SENT TO AI ---");
-        console.log(fullPrompt);
-        // This is a mock response to simulate the AI's behavior based on the old, problematic prompt.
-        // In a real scenario, you would remove this mock and use the actual API response.
-        // return "لا يمكنني الوصول إلى بيانات السوق في الوقت الفعلي...";
-
-        // Placeholder for actual API call which is assumed to be defined elsewhere
-        const result = await geminiModel.generateContent(fullPrompt);
-        const response = await result.response;
-
-
-        if (response.promptFeedback?.blockReason) {
-            console.error("AI Analysis Blocked:", response.promptFeedback.blockReason);
-            return `❌ تم حظر التحليل من قبل Google لأسباب تتعلق بالسلامة: ${response.promptFeedback.blockReason}`;
-        }
-        return response.text().trim();
-    } catch (error) {
-        console.error("AI Analysis Error (Gemini):", error);
-        return "❌ تعذر إجراء التحليل بالذكاء الاصطناعي. قد يكون هناك مشكلة في الاتصال أو المفتاح السري.";
-    }
-}
-
 async function getAIScalpingRecommendations() {
-    // 1. Get market data from the cache or a live API.
-    const prices = await getCachedMarketPrices(); // This function should be defined elsewhere in your project
+    // 1. Get market data
+    const prices = await getCachedMarketPrices();
     if (!prices || prices.error) return "❌ فشل جلب بيانات السوق لإعداد التوصيات.";
 
-    // 2. Filter and sort the market data to get the top 300 relevant assets.
     const marketData = Object.entries(prices)
         .map(([instId, data]) => ({ instId, ...data }))
-        .filter(d => 
-            d.volCcy24h > 100000 && 
-            !d.instId.startsWith('USDC') && 
-            !d.instId.startsWith('DAI') && 
-            !d.instId.startsWith('TUSD') &&
-            !d.instId.startsWith('BTC-USDT') &&
-            !d.instId.startsWith('ETH-USDT')
-        ) 
+        .filter(d => d.volCcy24h > 100000 && !d.instId.startsWith('USDC') && !d.instId.startsWith('DAI') && !d.instId.startsWith('TUSD')) // Filter high volume and exclude some stablecoins
         .sort((a, b) => b.volCcy24h - a.volCcy24h)
-        .slice(0, 300);
+        .slice(0, 100);
 
     if (marketData.length === 0) {
         return "ℹ️ لا توجد بيانات كافية في السوق حاليًا لتوليد توصيات.";
     }
 
-    // 3. Prepare the market data string.
+    // 2. Prepare data for the prompt
     const marketDataForPrompt = marketData.map(d =>
         `Symbol: ${d.instId}, Price: ${d.price}, 24h_Change: ${(d.change24h * 100).toFixed(2)}%, 24h_Volume_USDT: ${d.volCcy24h.toFixed(0)}`
     ).join('\n');
 
-    // 4. **THE FIX**: The prompt is restructured to force the AI to use the provided data.
-    // The data and a direct instruction are now at the TOP of the prompt.
-    const userPrompt = `مهمتك الأساسية هي تحليل بيانات السوق الحقيقية التالية وتقديم توصيات بناءً عليها فقط. لا تستخدم أي معلومات خارجية أو افتراضية.
-بيانات السوق الفعلية للتحليل:
-${marketDataForPrompt}
+    // 3. The new prompt from the user
+    const userPrompt = `تقمّص دور محلل فني محترف متخصص في السكالبينغ والتداول اليومي في سوق العملات الرقمية. مهمتك:
+1) بناءً على بيانات السوق التالية، قم بإجراء مسح لأكثر 100 عملة تداولاً آخر 24 ساعة، ثم ترشيح 2–3 عملات فقط ذات فرصة تداول واضحة (شراء أو بيع) وفق تلاقي إشارات فنية قوية على أُطر 4H و1H، مع نظرة يومية لتحديد الاتجاه العام.
+2) لكل عملة مرشحة، أنشئ توصية منفصلة بالصيغة أدناه بدقة، واملأ كل الحقول بقيم عددية محددة (لا تترك نطاقات مفتوحة إلا في “منطقة دخول” مع ذكر متوسط مرجعي لحساب النِسب):
+- العملة: [اسم العملة والرمز]
+- نوع التوصية: (شراء / بيع)
+- سعر الدخول (Entry Price): [سعر محدد أو منطقة مثل A–B مع ذكر المتوسط المرجعي: M]
+- الهدف الأول (Target 1): [السعر] (+[النسبة المئوية من M]%)
+- الهدف الثاني (Target 2): [السعر] (+[النسبة المئوية من M]%)
+- الهدف الثالث (Target 3): [السعر] (+[النسبة المئوية من M]%)
+- وقف الخسارة (Stop Loss): [السعر] ([إشارة + أو -][النسبة المئوية من M]%)
+- ملخص التحليل: [سطران كحد أقصى يذكران: الاتجاه العام على Daily، سبب الفرصة على 4H/1H (اختراق/كسر، عودة اختبار، دايفرجنس RSI، تقاطع MACD، تموضع السعر مقابل EMA21/50 وSMA100، نطاقات بولنجر، مناطق عرض/طلب، مستويات فيبوناتشي، تزايد حجم أو تأكيد حجمي)]
+- إخلاء مسؤولية: أدرك تماماً أن هذه التوصيات هي نتاج تحليل فني واحتمالات وقد لا تكون دقيقة، وهي ليست نصيحة مالية. تداول العملات الرقمية ينطوي على مخاطر عالية جداً وقد يؤدي إلى خسارة كامل رأس المال.
 
----
+قواعد حساب النِسب المئوية
+- إذا كان الدخول نطاقاً A–B، احسب المتوسط المرجعي M = (A + B) ÷ 2.
+- النسبة المئوية للهدف i = ((Target_i − M) ÷ M) × 100 مع علامة + للشراء و+ أيضاً إن كان الهدف أعلى M في البيع المعكوس، بينما إن كان أقرب للمنطق ضع الإشارة بحسب اتجاه الصفقة:
+  - صفقات الشراء: النِسب موجبة للأهداف، سالبة لوقف الخسارة.
+  - صفقات البيع: النِسب سالبة للأهداف (لأن السعر أدنى M)، وموجبة لوقف الخسارة.
+- إن كان الدخول سعراً واحداً، استخدمه مباشرة كأساس للنسبة.
+- اكتب النِسب بدقة عشرية واحدة أو اثنتين كحد أقصى.
 
-الآن، بعد الاطلاع على البيانات أعلاه، تقمّص دور محلل فني محترف متخصص في السكالبينغ والتداول اليومي في سوق العملات الرقمية. مهمتك:
+معايير المسح والفلترة
+- استبعد العملات المستقرة والمشاريع ذات السيولة غير العضوية الظاهرة.
+- فضّل العملات ذات:
+  - سيولة مرتفعة وتزايد حجم مقابل الحركة.
+  - بنية سوقية واضحة: قمم/قيعان متصاعدة أو هابطة، أو نطاق متماسك قريب من كسر.
+  - تلاقي مؤشرات:
+    - تموضع السعر فوق/تحت EMA21 وEMA50 وSMA100 بطريقة منسجمة مع الاتجاه.
+    - RSI: كسر مستوى 50، أو دايفرجنس إيجابي/سلبي واضح.
+    - MACD: تقاطع مع اتساع هيستوجرام في اتجاه الصفقة.
+    - بولنجر: اتساع نطاق أو خروج مدعوم بحجم.
+    - فيبوناتشي: أهداف عند 38.2%/50%/61.8% من آخر موجة.
+    - حجم/Volume Profile: مناطق عقد سعري مرجعية وتأكيد اختراق/كسر بالحجم.
 
-بالاعتماد على بيانات السوق الفعلية التي تم تزويدك بها في الأعلى، نفّذ مسحاً لأعلى 300 عملة من حيث حجم التداول لآخر 24 ساعة، مع استثناء البيتكوين (BTC) والإيثريوم (ETH) والعُملات المستقرة وأي أصول ذات سيولة غير عضوية أو سبريد مبالغ فيه.
+قواعد إنتاج التوصية
+- حدد: اتجاه Daily موجزاً، ثم قرار 4H/1H (اختراق/كسر/إعادة اختبار/ارتداد من طلب/عرض) بما يدعم القرار.
+- ضع منطقة دخول دقيقة وقابلة للتنفيذ، واذكر المتوسط المرجعي لحساب النِسب.
+- حدد 3 أهداف تصاعدية للشراء أو تنازلية للبيع بشكل منطقي مع بنية السوق/فيبوناتشي/مقاومات/دعوم.
+- ضع وقف خسارة منطقياً أسفل/أعلى منطقة الطلب/العرض أو أسفل/أعلى قاع/قمة كسرية حديثة.
+- احسب وأظهر النِسب المئوية لكل هدف ووقف الخسارة كما في القواعد أعلاه.
+- اجعل “ملخص التحليل” لا يتجاوز سطرين مكثفين.
+- لا تتجاوز 3 توصيات نهائية.
 
-رشّح 5 عملات فقط تقدّم حالياً أوضح فرص تداول مضاربية (شراء أو بيع) وفق تلاقي إشارات فنية قوية على إطارَي 4H و1H، مع نظرة يومية (Daily) مختصرة لتحديد الاتجاه العام.
+شكل الإخراج النهائي
+قدّم فقط التوصيات بصيغة القوائم التالية لكل عملة، دون مقدمات أو شروحات إضافية:
+[كرّر البلوك التالي 2–3 مرات كحد أقصى]
+- العملة: [..]
+- نوع التوصية: [..]
+- سعر الدخول (Entry Price): [..] (المتوسط المرجعي: [M])
+- الهدف الأول (Target 1): [السعر] ([±X.X]%)
+- الهدف الثاني (Target 2): [السعر] ([±X.X]%)
+- الهدف الثالث (Target 3): [السعر] ([±X.X]%)
+- وقف الخسارة (Stop Loss): [السعر] ([±X.X]%)
+- ملخص التحليل: [سطران كحد أقصى]
+- إخلاء مسؤولية: أدرك تماماً أن هذه التوصيات هي نتاج تحليل فني واحتمالات وقد لا تكون دقيقة، وهي ليست نصيحة مالية. تداول العملات الرقمية ينطوي على مخاطر عالية جداً وقد يؤدي إلى خسارة كامل رأس المال.
 
-رتّب التوصيات الخمس تصاعدياً من الأقوى إلى الأضعف بناءً على درجة تلاقي الإشارات والمصداقية التنفيذية (قوة الاتجاه، وضوح الهيكل، جودة الاختراق/الكسر، التأكيد الحجمي، RR الفعّالة).
+ملاحظات تنفيذية
+- التزم بنسبة مخاطرة لا تتجاوز 2–3% لكل صفقة، ويمكن تحريك وقف الخسارة إلى نقطة الدخول بعد تحقق الهدف 1.
+- حدّث المدخلات (الأسعار/الأطر) كل 4–6 ساعات لتوافق طبيعة السوق المتقلبة.
 
-التزم بالفلاتر الذكية التالية أثناء المسح والاختيار:
+بيانات السوق الحالية للتحليل:
+${marketDataForPrompt}`;
 
-مرحلة السوق:
-- منطقة تجميع قرب قاع محلي مع تقلّص بولنجر وتزايد حجم تدريجي.
-- صعود/هبوط غير مكتمل: موجة دافعة لم تبلغ مقاومات/دعوم محورية أو نسب فيبوناتشي الرئيسية.
-- كسر/اختراق حديث مع إعادة اختبار ناجحة لمنطقة طلب/عرض.
-
-تلاقي المؤشرات:
-- تموضع السعر مع الاتجاه مقابل EMA21/EMA50/SMA100.
-- RSI: فوق/تحت 50 بحسب الاتجاه، أو دايفرجنس داعم (كلاسيكي/مخفي).
-- MACD: تقاطع مع اتساع هيستوغرام في اتجاه الصفقة.
-- بولنجر: انضغاط سابق يليه توسّع، أو إغلاق خارج النطاق مع إعادة اختبار.
-- فيبوناتشي: تحديد الأهداف عند 38.2%/50%/61.8% من آخر موجة.
-- حجم/Volume Profile: تأكيد عند عقد سعرية مهمة (HVN/LVN) وحجم أعلى من المتوسط على شموع الدافعة.
-
-قواعد حساب النِسب المئوية:
-إن كان الدخول نطاقاً A–B، استخدم المتوسط المرجعي: M = (A + B) ÷ 2. وإن كان السعر واحداً فاعتبره M.
-- صفقات الشراء: نسبة الهدف i = ((Target_i − M) ÷ M) × 100 بإشارة +، ونسبة الوقف = ((SL − M) ÷ M) × 100 بإشارة −.
-- صفقات البيع: نسبة الهدف i = ((Target_i − M) ÷ M) × 100 بإشارة −، ونسبة الوقف = ((SL − M) ÷ M) × 100 بإشارة +.
-دوّن النسب بدقة عشرية واحدة أو اثنتين كحد أقصى. استهدف RR فعّالة ≥ 1:2.
-
-قواعد إنتاج الأرقام:
-- اجعل منطقة الدخول ضيقة وقابلة للتنفيذ.
-- حدّد 3 أهداف منطقية ووقف خسارة دقيق.
-- اذكر سببين كحد أقصى في “ملخص التحليل” بإيجاز شديد.
-
-شكل الإخراج النهائي (قدّم فقط 5 توصيات مرتبة من الأقوى إلى الأضعف بلا شروحات إضافية):
-[كرّر البلوك التالي 5 مرات، مع ترتيب 1 ثم 2 ثم 3 ثم 4 ثم 5]
-
-الترتيب: [1=الأقوى … 5=الأضعف]
-العملة: [..]
-نوع التوصية: [شراء / بيع]
-سعر الدخول (Entry Price): [A – B] (المتوسط المرجعي: [M]) أو [سعر واحد (M)]
-الهدف الأول (Target 1): [السعر] ([±X.X]%)
-الهدف الثاني (Target 2): [السعر] ([±X.X]%)
-الهدف الثالث (Target 3): [السعر] ([±X.X]%)
-وقف الخسارة (Stop Loss): [السعر] ([±X.X]%)
-ملخص التحليل: [سطران كحد أقصى]
-إخلاء مسؤولية: أدرك تماماً أن هذه التوصيات هي نتاج تحليل فني واحتمالات وقد لا تكون دقيقة، وهي ليست نصيحة مالية. تداول العملات الرقمية ينطوي على مخاطر عالية جداً وقد يؤدي إلى خسارة كامل رأس المال.
-`;
-
-    // 5. Call the AI model with the raw, restructured prompt.
-    const analysis = await analyzeWithAI(userPrompt, true);
+    // 4. Call Gemini AI
+    const analysis = await analyzeWithAI(userPrompt, true); // Use raw prompt
     return analysis;
-}
-
-// NOTE: You need to have a function like this defined in your actual code.
-// This is just a placeholder for the example to be complete.
-async function getCachedMarketPrices() {
-    // This function should fetch real data from an exchange API like Binance, OKX, etc.
-    // The following is dummy data for demonstration.
-    return {
-        "SOL-USDT": { price: 145.2, change24h: 0.05, volCcy24h: 1500000000 },
-        "ADA-USDT": { price: 0.45, change24h: -0.02, volCcy24h: 500000000 },
-        "DOT-USDT": { price: 7.2, change24h: 0.01, volCcy24h: 300000000 },
-        "XRP-USDT": { price: 0.52, change24h: 0.03, volCcy24h: 1200000000 },
-        "LTC-USDT": { price: 85.5, change24h: 0.0, volCcy24h: 400000000 },
-        "LINK-USDT": { price: 15.8, change24h: 0.08, volCcy24h: 600000000 },
-        "AVAX-USDT": { price: 35.1, change24h: -0.05, volCcy24h: 800000000 },
-        "BTC-USDT": { price: 68000, change24h: 0.01, volCcy24h: 45000000000 },
-        "ETH-USDT": { price: 3500, change24h: 0.02, volCcy24h: 25000000000 },
-    };
 }
 
 // =================================================================
