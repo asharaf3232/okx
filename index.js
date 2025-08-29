@@ -1,5 +1,5 @@
 // =================================================================
-// Advanced Analytics Bot - v146.5 (UI Restoration II)
+// Advanced Analytics Bot - v147.1 (Parse Mode Fix)
 // =================================================================
 // --- IMPORTS ---
 const express = require("express");
@@ -178,7 +178,6 @@ const getHistoricalPerformance = async (asset) => { try { const history = await 
 const saveVirtualTrade = async (tradeData) => { try { const tradeWithId = { ...tradeData, _id: crypto.randomBytes(16).toString("hex") }; await getCollection("virtualTrades").insertOne(tradeWithId); return tradeWithId; } catch (e) { console.error("Error saving virtual trade:", e); } };
 const getActiveVirtualTrades = async () => { try { return await getCollection("virtualTrades").find({ status: 'active' }).toArray(); } catch (e) { return []; } };
 const updateVirtualTradeStatus = async (tradeId, status, finalPrice) => { try { await getCollection("virtualTrades").updateOne({ _id: tradeId }, { $set: { status: status, closePrice: finalPrice, closedAt: new Date() } }); } catch (e) { console.error(`Error updating virtual trade ${tradeId}:`, e); } };
-// *** NEW V146.0: Latency Log Helpers ***
 const saveLatencyLog = async (logData) => { try { await getCollection("latencyLogs").insertOne({ ...logData, _id: crypto.randomBytes(16).toString("hex") }); } catch (e) { console.error("Error in saveLatencyLog:", e); } };
 const getRecentLatencyLogs = async (limit = 10) => { try { return await getCollection("latencyLogs").find().sort({ signalTime: -1 }).limit(limit).toArray(); } catch (e) { return []; } };
 const getLatencyLogsForPeriod = async (hours = 24) => { try { const since = new Date(Date.now() - hours * 60 * 60 * 1000); return await getCollection("latencyLogs").find({ signalTime: { $gte: since } }).toArray(); } catch (e) { return []; } };
@@ -275,7 +274,7 @@ async function createBackup() {
             virtualTrades: await getCollection("virtualTrades").find({}).toArray(),
             tradeHistory: await getCollection("tradeHistory").find({}).toArray(),
             technicalAlertsState: await loadTechnicalAlertsState(),
-            latencyLogs: await getCollection("latencyLogs").find({}).toArray(), // *** NEW V146.0: Backup latency logs ***
+            latencyLogs: await getCollection("latencyLogs").find({}).toArray(),
             timestamp
         };
 
@@ -324,7 +323,7 @@ async function restoreFromBackup(backupFile) {
             await getCollection("tradeHistory").deleteMany({});
             await getCollection("tradeHistory").insertMany(backupData.tradeHistory);
         }
-        if (backupData.latencyLogs) { // *** NEW V146.0: Restore latency logs ***
+        if (backupData.latencyLogs) {
             await getCollection("latencyLogs").deleteMany({});
             await getCollection("latencyLogs").insertMany(backupData.latencyLogs);
         }
@@ -560,7 +559,6 @@ async function formatAdvancedMarketAnalysis(ownedAssets = []) {
 async function formatQuickStats(assets, total, capital) { const pnl = capital > 0 ? total - capital : 0; const pnlPercent = capital > 0 ? (pnl / capital) * 100 : 0; const statusEmoji = pnl >= 0 ? '🟢' : '🔴'; const statusText = pnl >= 0 ? 'ربح' : 'خسارة'; let msg = "⚡ *إحصائيات سريعة*\n\n"; msg += `💎 *إجمالي الأصول:* \`${assets.filter(a => a.asset !== 'USDT').length}\`\n`; msg += `💰 *القيمة الحالية:* \`$${sanitizeMarkdownV2(formatNumber(total))}\`\n`; if (capital > 0) { msg += `📈 *نسبة الربح/الخسارة:* \`${sanitizeMarkdownV2(formatNumber(pnlPercent))}%\`\n`; msg += `🎯 *الحالة:* ${statusEmoji} ${statusText}\n`; } msg += `\n━━━━━━━━━━━━━━━━━━━━\n*تحليل القمم والقيعان للأصول:*\n`; const cryptoAssets = assets.filter(a => a.asset !== "USDT"); if (cryptoAssets.length === 0) { msg += "\n`لا توجد أصول في محفظتك لتحليلها\\.`"; } else { const assetExtremesPromises = cryptoAssets.map(asset => getAssetPriceExtremes(`${asset.asset}-USDT`) ); const assetExtremesResults = await Promise.all(assetExtremesPromises); cryptoAssets.forEach((asset, index) => { const extremes = assetExtremesResults[index]; msg += `\n🔸 *${sanitizeMarkdownV2(asset.asset)}:*\n`; if (extremes) { msg += ` *الأسبوعي:* قمة \`$${sanitizeMarkdownV2(formatSmart(extremes.weekly.high))}\` / قاع \`$${sanitizeMarkdownV2(formatSmart(extremes.weekly.low))}\`\n`; msg += ` *الشهري:* قمة \`$${sanitizeMarkdownV2(formatSmart(extremes.monthly.high))}\` / قاع \`$${sanitizeMarkdownV2(formatSmart(extremes.monthly.low))}\`\n`; msg += ` *السنوي:* قمة \`$${sanitizeMarkdownV2(formatSmart(extremes.yearly.high))}\` / قاع \`$${sanitizeMarkdownV2(formatSmart(extremes.yearly.low))}\`\n`; msg += ` *التاريخي:* قمة \`$${sanitizeMarkdownV2(formatSmart(extremes.allTime.high))}\` / قاع \`$${sanitizeMarkdownV2(formatSmart(extremes.allTime.low))}\``; } else { msg += ` \`تعذر جلب البيانات التاريخية\\.\``; } }); } msg += `\n\n⏰ *آخر تحديث:* ${sanitizeMarkdownV2(new Date().toLocaleString("ar-EG", { timeZone: "Africa/Cairo" }))}`; return msg; }
 async function formatPerformanceReport(period, periodLabel, history, btcHistory) { const stats = calculatePerformanceStats(history); if (!stats) return { error: "ℹ️ لا توجد بيانات كافية لهذه الفترة\\." }; let btcPerformanceText = " `لا تتوفر بيانات`"; let benchmarkComparison = ""; if (btcHistory && btcHistory.length >= 2) { const btcStart = btcHistory[0].close; const btcEnd = btcHistory[btcHistory.length - 1].close; const btcChange = (btcEnd - btcStart) / btcStart * 100; btcPerformanceText = `\`${sanitizeMarkdownV2(btcChange >= 0 ? '+' : '')}${sanitizeMarkdownV2(formatNumber(btcChange))}%\``; if (stats.pnlPercent > btcChange) { benchmarkComparison = `▪️ *النتيجة:* أداء أعلى من السوق ✅`; } else { benchmarkComparison = `▪️ *النتيجة:* أداء أقل من السوق ⚠️`; } } const chartLabels = history.map(h => period === '24h' ? new Date(h.time).getHours() + ':00' : new Date(h.time).toLocaleDateString('en-GB', {day: '2-digit', month: '2-digit'})); const chartDataPoints = history.map(h => h.total); const chartUrl = createChartUrl(chartDataPoints, 'line', `أداء المحفظة - ${periodLabel}`, chartLabels, 'قيمة المحفظة ($)'); const pnlSign = stats.pnl >= 0 ? '+' : ''; const emoji = stats.pnl >= 0 ? '🟢⬆️' : '🔴⬇️'; let caption = `📊 *تحليل أداء المحفظة \\| ${sanitizeMarkdownV2(periodLabel)}*\n\n`; caption += `📈 *النتيجة:* ${emoji} \`$${sanitizeMarkdownV2(pnlSign)}${sanitizeMarkdownV2(formatNumber(stats.pnl))}\` \\(\`${sanitizeMarkdownV2(pnlSign)}${sanitizeMarkdownV2(formatNumber(stats.pnlPercent))}%\`\\)\n`; caption += `*التغير الصافي: من \`$${sanitizeMarkdownV2(formatNumber(stats.startValue))}\` إلى \`$${sanitizeMarkdownV2(formatNumber(stats.endValue))}\`*\n\n`; caption += `*📝 مقارنة معيارية \\(Benchmark\\):*\n`; caption += `▪️ *أداء محفظتك:* \`${sanitizeMarkdownV2(stats.pnlPercent >= 0 ? '+' : '')}${sanitizeMarkdownV2(formatNumber(stats.pnlPercent))}%\`\n`; caption += `▪️ *أداء عملة BTC:* ${btcPerformanceText}\n`; caption += `${benchmarkComparison}\n\n`; caption += `*📈 مؤشرات الأداء الرئيسية:*\n`; caption += `▪️ *أفضل يوم:* \`+${sanitizeMarkdownV2(formatNumber(stats.bestDayChange))}%\`\n`; caption += `▪️ *أسوأ يوم:* \`${sanitizeMarkdownV2(formatNumber(stats.worstDayChange))}%\`\n`; caption += `▪️ *مستوى التقلب:* ${sanitizeMarkdownV2(stats.volText)}`; return { caption, chartUrl }; }
 
-// *** NEW V146.0: Formatting functions for new features ***
 function formatMarketContextCard(context) {
     if (!context || context.error) return "";
     const { trend, trendEmoji, volume, volumeEmoji, conclusion } = context;
@@ -588,10 +586,7 @@ async function formatPulseDashboard() {
         msg += `*${actionEmoji} ${sanitizeMarkdownV2(log.asset)}* \\| \`${sanitizeMarkdownV2(new Date(log.signalTime).toLocaleTimeString('ar-EG'))}\`\n`;
         msg += `  \\- *زمن الاستجابة الإجمالي:* \`${sanitizeMarkdownV2(formatNumber(totalLatency, 2))} ثانية\` ${colorEmoji}\n`;
         msg += `  \\- *تكلفة الصفقة:* \`$${sanitizeMarkdownV2(formatNumber(log.tradeValue))}\`\n`;
-        // Note: Slippage calculation is not possible without an external signal source price.
-        // The "tradeValue" is used as a proxy for the cost/impact of the trade.
         msg += `  \\- *الانزلاق السعري:* \`غير متاح حاليًا\`\n`;
-        // *** HOTFIX V146.1: Corrected syntax from double quotes to template literal backticks ***
         msg += `  \\- *سلسلة التأخير:* \`اكتشاف\` → \`${sanitizeMarkdownV2((log.analysisTime - log.signalTime) / 1000)}s\` → \`إشعار\`\n`;
         msg += "━━━━━━━━━━━━━━━━━━━━\n";
     }
@@ -648,7 +643,6 @@ async function getTechnicalAnalysis(instId) { const candleData = (await getHisto
 function calculatePerformanceStats(history) { if (history.length < 2) return null; const values = history.map(h => h.total); const startValue = values[0]; const endValue = values[values.length - 1]; const pnl = endValue - startValue; const pnlPercent = (startValue > 0) ? (pnl / startValue) * 100 : 0; const maxValue = Math.max(...values); const minValue = Math.min(...values); const avgValue = values.reduce((sum, val) => sum + val, 0) / values.length; const dailyReturns = []; for (let i = 1; i < values.length; i++) { dailyReturns.push((values[i] - values[i - 1]) / values[i - 1]); } const bestDayChange = dailyReturns.length > 0 ? Math.max(...dailyReturns) * 100 : 0; const worstDayChange = dailyReturns.length > 0 ? Math.min(...dailyReturns) * 100 : 0; const avgReturn = dailyReturns.length > 0 ? dailyReturns.reduce((sum, ret) => sum + ret, 0) / dailyReturns.length : 0; const volatility = dailyReturns.length > 0 ? Math.sqrt(dailyReturns.map(x => Math.pow(x - avgReturn, 2)).reduce((a, b) => a + b) / dailyReturns.length) * 100 : 0; let volText = "متوسط"; if(volatility < 1) volText = "منخفض"; if(volatility > 5) volText = "مرتفع"; return { startValue, endValue, pnl, pnlPercent, maxValue, minValue, avgValue, bestDayChange, worstDayChange, volatility, volText }; }
 function createChartUrl(data, type = 'line', title = '', labels = [], dataLabel = '') { if (!data || data.length === 0) return null; const pnl = data[data.length - 1] - data[0]; const chartColor = pnl >= 0 ? 'rgb(75, 192, 75)' : 'rgb(255, 99, 132)'; const chartBgColor = pnl >= 0 ? 'rgba(75, 192, 75, 0.2)' : 'rgba(255, 99, 132, 0.2)'; const chartConfig = { type: 'line', data: { labels: labels, datasets: [{ label: dataLabel, data: data, fill: true, backgroundColor: chartBgColor, borderColor: chartColor, tension: 0.1 }] }, options: { title: { display: true, text: title } } }; return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&backgroundColor=white`; }
 
-// *** NEW V146.0: Function to get market context for a trade ***
 async function getMarketContext(instId) {
     try {
         const candles = await getHistoricalCandles(instId, '1D', 51);
@@ -703,9 +697,9 @@ async function getMarketContext(instId) {
 
 
 // --- AI Analysis Services ---
-async function analyzeWithAI(prompt) {
+async function analyzeWithAI(prompt, raw = false) {
     try {
-        const fullPrompt = `أنت محلل مالي خبير ومستشار استثماري متخصص في العملات الرقمية، تتحدث بالعربية الفصحى، وتقدم تحليلات دقيقة وموجزة. في نهاية كل تحليل، يجب عليك إضافة السطر التالي بالضبط كما هو: "هذا التحليل لأغراض معلوماتية فقط وليس توصية مالية."\n\n---\n\nالطلب: ${prompt}`;
+        const fullPrompt = raw ? prompt : `أنت محلل مالي خبير ومستشار استثماري متخصص في العملات الرقمية، تتحدث بالعربية الفصحى، وتقدم تحليلات دقيقة وموجزة. في نهاية كل تحليل، يجب عليك إضافة السطر التالي بالضبط كما هو: "هذا التحليل لأغراض معلوماتية فقط وليس توصية مالية."\n\n---\n\nالطلب: ${prompt}`;
         const result = await geminiModel.generateContent(fullPrompt);
         const response = await result.response;
         if (response.promptFeedback?.blockReason) {
@@ -718,188 +712,115 @@ async function analyzeWithAI(prompt) {
         return "❌ تعذر إجراء التحليل بالذكاء الاصطناعي. قد يكون هناك مشكلة في الاتصال أو المفتاح السري.";
     }
 }
-async function getCoinFundamentals(coinSymbol) {
-    try {
-        const listRes = await fetch('https://api.coingecko.com/api/v3/coins/list');
-        const coinList = await listRes.json();
-        const coin = coinList.find(c => c.symbol.toLowerCase() === coinSymbol.toLowerCase());
-        if (!coin) {
-            return { error: "لم يتم العثور على العملة في قاعدة البيانات." };
-        }
-        const coinId = coin.id;
 
-        const dataRes = await fetch(`https://api.coingecko.com/api/v3/coins/${coinId}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false`);
-        const data = await dataRes.json();
-
-        if (data.error) {
-            return { error: data.error };
-        }
-
-        return {
-            rank: data.market_cap_rank || 'N/A',
-            category: data.categories?.[0] || 'Unknown',
-            description: data.description?.ar || data.description?.en?.split('. ')[0] || 'لا يوجد وصف متاح.'
-        };
-    } catch (error) {
-        console.error(`CoinGecko API Error for ${coinSymbol}:`, error);
-        return { error: "فشل الاتصال بخدمة بيانات المشاريع." };
-    }
-}
-function truncate(s, max = 12000) { 
-    return s.length > max ? s.slice(0, max) + "..." : s; 
-}
-
-async function getAIAnalysisForAsset(asset) {
-    const instId = `${asset}-USDT`;
-    const [details, tech, perf, fundamentals] = await Promise.all([
-        getInstrumentDetails(instId),
-        getTechnicalAnalysis(instId),
-        getHistoricalPerformance(asset),
-        getCoinFundamentals(asset)
-    ]);
-
-    if (details.error) return `لا يمكن تحليل ${asset}: ${details.error}`;
-    if (tech.error) return `لا يمكن تحليل ${asset}: ${tech.error}`;
-    if (!perf) return `لا يمكن تحليل ${asset}: فشل جلب الأداء التاريخي.`;
-
-    let fundamentalSection = "";
-    if (fundamentals && !fundamentals.error) {
-        fundamentalSection = `
-    **1. بيانات المشروع الأساسية (من مصادر خارجية):**
-    - **الترتيب السوقي:** ${fundamentals.rank || 'غير معروف'}
-    - **الفئة:** ${fundamentals.category || 'غير معروف'}
-    - **وصف المشروع:** ${fundamentals.description || 'لا يوجد'}
-        `;
-    } else {
-        fundamentalSection = `
-    **1. بيانات المشروع الأساسية:**
-    - لم يتم العثور على بيانات أساسية محدثة للمشروع. إذا كانت لديك معرفة مسبقة بهذا المشروع، يرجى استخدامها في تحليلك.
-        `;
-    }
-
-    let riskProfile = "متوسط";
-    if (tech.rsi > 70) riskProfile = "مرتفع (تشبع شرائي)";
-    if (tech.rsi < 30) riskProfile = "منخفض (تشبع بيعي)";
-
-    const basePrompt = `
-    أنت محلل خبير. قم بتحليل عملة ${asset} بشكل شامل يدمج بين التحليل الأساسي والفني وتاريخي الشخصي معها.
-    ${fundamentalSection}
-    **2. البيانات الفنية الحالية:**
-    - **السعر الحالي:** $${formatSmart(details.price)}
-    - **أعلى 24 ساعة:** $${formatSmart(details.high24h)}
-    - **أدنى 24 ساعة:** $${formatSmart(details.low24h)}
-    - **RSI (14 يوم):** ${tech.rsi ? formatNumber(tech.rsi) : 'N/A'}
-    - **ملف المخاطرة الفني:** ${riskProfile}
-    - **علاقة السعر بالمتوسطات:** السعر حاليًا ${details.price > tech.sma20 ? 'فوق' : 'تحت'} SMA20 و ${details.price > tech.sma50 ? 'فوق' : 'تحت'} SMA50.
-
-    **3. بياناتي التاريخية مع العملة:**
-    - **عدد صفقاتي السابقة:** ${perf.tradeCount}
-    - **معدل نجاحي:** ${perf.tradeCount > 0 ? formatNumber((perf.winningTrades / perf.tradeCount) * 100) : '0'}%
-
-    **المطلوب:**
-    قدم تحليلًا متكاملاً في فقرة واحدة. ابدأ بوصف المشروع ومكانته (باستخدام البيانات المتاحة أو معرفتك الخاصة)، ثم اربطه بالوضع الفني الحالي، وأخيرًا، قدم توصية واضحة (شراء/بيع/مراقبة) مع الأخذ في الاعتبار تاريخي الشخصي مع العملة.
-    `;
-
-    return await analyzeWithAI(truncate(basePrompt));
-}
-
-async function getAIAnalysisForPortfolio(assets, total, capital) {
-    const topAssets = assets.slice(0, 5).map(a => `${a.asset} (يمثل ${formatNumber((a.value/total)*100)}%)`).join('، ');
-    const pnlPercent = capital > 0 ? ((total - capital) / capital) * 100 : 0;
-    const prompt = `
-    قم بتحليل المحفظة الاستثمارية التالية:
-    - القيمة الإجمالية: $${formatNumber(total)}
-    - رأس المال الأصلي: $${formatNumber(capital)}
-    - إجمالي الربح/الخسارة غير المحقق: ${formatNumber(pnlPercent)}%
-    - أبرز 5 أصول في المحفظة: ${topAssets}
-    
-    قدم تقييمًا لصحة المحفظة، درجة تنوعها، وأهم المخاطر أو الفرص التي تراها. ثم قدم توصية واحدة واضحة لتحسين أدائها.
-    `;
-
-    return await analyzeWithAI(prompt);
-}
-
-async function getLatestCryptoNews(searchQuery) {
-    try {
-        const apiKey = process.env.NEWS_API_KEY;
-        if (!apiKey) throw new Error("NEWS_API_KEY is not configured.");
-
-        const fromDate = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-        const url = `https://newsapi.org/v2/everything?q=(${searchQuery})&sortBy=relevancy&from=${fromDate}&pageSize=10&apiKey=${apiKey}`;
-
-        const res = await fetch(url);
-        const data = await res.json();
-
-        if (data.status !== 'ok') {
-            if (data.code === 'apiKeyInvalid' || data.code === 'apiKeyMissing') {
-                 throw new Error("مفتاح NewsAPI غير صالح أو مفقود. يرجى التحقق من إعداداتك.");
-            }
-            throw new Error(`NewsAPI error: ${data.message}`);
-        }
-
-        return data.articles.map(article => ({
-            title: article.title,
-            source: article.source.name,
-            content: article.content || article.description,
-            url: article.url
-        }));
-
-    } catch (error) {
-        console.error("Error fetching crypto news:", error);
-        return { error: error.message };
-    }
-}
-
-async function getAIGeneralNewsSummary() {
-    const newsArticles = await getLatestCryptoNews("crypto OR cryptocurrency OR bitcoin OR ethereum OR blockchain");
-    if (newsArticles.error) return `❌ فشل في جلب الأخبار: ${newsArticles.error}`;
-    if (newsArticles.length === 0) return "ℹ️ لم يتم العثور على أخبار حديثة عن الكريبتو حاليًا.";
-
-    const articlesForPrompt = newsArticles.map(a => `Source: ${a.source}\nTitle: ${a.title}\nContent: ${a.content}`).join('\n\n---\n\n');
-
-    const prompt = `You are an expert news editor. The following is a list of recent news articles, likely in English. Your task is to:
-1. Identify the 3-4 most important news items related to the cryptocurrency market.
-2. Summarize them concisely in PROFESSIONAL ARABIC.
-3. Based on these summaries, write a short paragraph in ARABIC about the general market sentiment (e.g., bullish, bearish, uncertain).
-
-News Articles:\n${articlesForPrompt}`;
-
-    return await analyzeWithAI(prompt);
-}
-
-async function getAIPortfolioNewsSummary() {
+async function getAIScalpingRecommendations() {
+    // 1. Get market data
     const prices = await getCachedMarketPrices();
-    if (prices.error) throw new Error("فشل جلب أسعار السوق لتحليل أخبار المحفظة.");
-    const { assets, error } = await okxAdapter.getPortfolio(prices);
-    if (error) throw new Error("فشل جلب المحفظة لتحليل الأخبار.");
+    if (!prices || prices.error) return "❌ فشل جلب بيانات السوق لإعداد التوصيات.";
 
-    const cryptoAssets = assets.filter(a => a.asset !== "USDT");
-    if (cryptoAssets.length === 0) {
-        return "ℹ️ لا تحتوي محفظتك على عملات رقمية لجلب أخبار متعلقة بها.";
+    const marketData = Object.entries(prices)
+        .map(([instId, data]) => ({ instId, ...data }))
+        .filter(d => d.volCcy24h > 100000 && !d.instId.startsWith('USDC') && !d.instId.startsWith('DAI') && !d.instId.startsWith('TUSD')) // Filter high volume and exclude some stablecoins
+        .sort((a, b) => b.volCcy24h - a.volCcy24h)
+        .slice(0, 100);
+
+    if (marketData.length === 0) {
+        return "ℹ️ لا توجد بيانات كافية في السوق حاليًا لتوليد توصيات.";
     }
 
-    const assetSymbols = cryptoAssets.map(a => `"${a.asset} crypto"`).join(' OR '); 
+    // 2. Prepare data for the prompt
+    const marketDataForPrompt = marketData.map(d =>
+        `Symbol: ${d.instId}, Price: ${d.price}, 24h_Change: ${(d.change24h * 100).toFixed(2)}%, 24h_Volume_USDT: ${d.volCcy24h.toFixed(0)}`
+    ).join('\n');
 
-    const newsArticles = await getLatestCryptoNews(assetSymbols);
-    if (newsArticles.error) return `❌ فشل في جلب الأخبار: ${newsArticles.error}`;
-    if (newsArticles.length === 0) return `ℹ️ لم يتم العثور على أخبار حديثة متعلقة بأصول محفظتك (${assetSymbols.replace(/"/g, '').replace(/ crypto/g, '')}).`;
+    // 3. The new prompt from the user
+    const userPrompt = `تقمّص دور محلل فني محترف متخصص في السكالبينغ والتداول اليومي في سوق العملات الرقمية. مهمتك:
+1) بناءً على بيانات السوق التالية، قم بإجراء مسح لأكثر 100 عملة تداولاً آخر 24 ساعة، ثم ترشيح 2–3 عملات فقط ذات فرصة تداول واضحة (شراء أو بيع) وفق تلاقي إشارات فنية قوية على أُطر 4H و1H، مع نظرة يومية لتحديد الاتجاه العام.
+2) لكل عملة مرشحة، أنشئ توصية منفصلة بالصيغة أدناه بدقة، واملأ كل الحقول بقيم عددية محددة (لا تترك نطاقات مفتوحة إلا في “منطقة دخول” مع ذكر متوسط مرجعي لحساب النِسب):
+- العملة: [اسم العملة والرمز]
+- نوع التوصية: (شراء / بيع)
+- سعر الدخول (Entry Price): [سعر محدد أو منطقة مثل A–B مع ذكر المتوسط المرجعي: M]
+- الهدف الأول (Target 1): [السعر] (+[النسبة المئوية من M]%)
+- الهدف الثاني (Target 2): [السعر] (+[النسبة المئوية من M]%)
+- الهدف الثالث (Target 3): [السعر] (+[النسبة المئوية من M]%)
+- وقف الخسارة (Stop Loss): [السعر] ([إشارة + أو -][النسبة المئوية من M]%)
+- ملخص التحليل: [سطران كحد أقصى يذكران: الاتجاه العام على Daily، سبب الفرصة على 4H/1H (اختراق/كسر، عودة اختبار، دايفرجنس RSI، تقاطع MACD، تموضع السعر مقابل EMA21/50 وSMA100، نطاقات بولنجر، مناطق عرض/طلب، مستويات فيبوناتشي، تزايد حجم أو تأكيد حجمي)]
+- إخلاء مسؤولية: أدرك تماماً أن هذه التوصيات هي نتاج تحليل فني واحتمالات وقد لا تكون دقيقة، وهي ليست نصيحة مالية. تداول العملات الرقمية ينطوي على مخاطر عالية جداً وقد يؤدي إلى خسارة كامل رأس المال.
 
-    const articlesForPrompt = newsArticles.map(a => `Source: ${a.source}\nTitle: ${a.title}\nContent: ${a.content}`).join('\n\n---\n\n');
+قواعد حساب النِسب المئوية
+- إذا كان الدخول نطاقاً A–B، احسب المتوسط المرجعي M = (A + B) ÷ 2.
+- النسبة المئوية للهدف i = ((Target_i − M) ÷ M) × 100 مع علامة + للشراء و+ أيضاً إن كان الهدف أعلى M في البيع المعكوس، بينما إن كان أقرب للمنطق ضع الإشارة بحسب اتجاه الصفقة:
+  - صفقات الشراء: النِسب موجبة للأهداف، سالبة لوقف الخسارة.
+  - صفقات البيع: النِسب سالبة للأهداف (لأن السعر أدنى M)، وموجبة لوقف الخسارة.
+- إن كان الدخول سعراً واحداً، استخدمه مباشرة كأساس للنسبة.
+- اكتب النِسب بدقة عشرية واحدة أو اثنتين كحد أقصى.
 
-    const prompt = `You are a personal financial advisor. My portfolio contains the following assets: ${assetSymbols}. Below is a list of recent news articles, likely in English. Your task is to:
-1. Summarize the most important news from the list that could affect my investments.
-2. Explain the potential impact of each news item simply.
-3. All your output MUST be in PROFESSIONAL ARABIC.
+معايير المسح والفلترة
+- استبعد العملات المستقرة والمشاريع ذات السيولة غير العضوية الظاهرة.
+- فضّل العملات ذات:
+  - سيولة مرتفعة وتزايد حجم مقابل الحركة.
+  - بنية سوقية واضحة: قمم/قيعان متصاعدة أو هابطة، أو نطاق متماسك قريب من كسر.
+  - تلاقي مؤشرات:
+    - تموضع السعر فوق/تحت EMA21 وEMA50 وSMA100 بطريقة منسجمة مع الاتجاه.
+    - RSI: كسر مستوى 50، أو دايفرجنس إيجابي/سلبي واضح.
+    - MACD: تقاطع مع اتساع هيستوجرام في اتجاه الصفقة.
+    - بولنجر: اتساع نطاق أو خروج مدعوم بحجم.
+    - فيبوناتشي: أهداف عند 38.2%/50%/61.8% من آخر موجة.
+    - حجم/Volume Profile: مناطق عقد سعري مرجعية وتأكيد اختراق/كسر بالحجم.
 
-News Articles:\n${articlesForPrompt}`;
+قواعد إنتاج التوصية
+- حدد: اتجاه Daily موجزاً، ثم قرار 4H/1H (اختراق/كسر/إعادة اختبار/ارتداد من طلب/عرض) بما يدعم القرار.
+- ضع منطقة دخول دقيقة وقابلة للتنفيذ، واذكر المتوسط المرجعي لحساب النِسب.
+- حدد 3 أهداف تصاعدية للشراء أو تنازلية للبيع بشكل منطقي مع بنية السوق/فيبوناتشي/مقاومات/دعوم.
+- ضع وقف خسارة منطقياً أسفل/أعلى منطقة الطلب/العرض أو أسفل/أعلى قاع/قمة كسرية حديثة.
+- احسب وأظهر النِسب المئوية لكل هدف ووقف الخسارة كما في القواعد أعلاه.
+- اجعل “ملخص التحليل” لا يتجاوز سطرين مكثفين.
+- لا تتجاوز 3 توصيات نهائية.
 
-    return await analyzeWithAI(prompt);
+شكل الإخراج النهائي
+قدّم فقط التوصيات بصيغة القوائم التالية لكل عملة، دون مقدمات أو شروحات إضافية:
+[كرّر البلوك التالي 2–3 مرات كحد أقصى]
+- العملة: [..]
+- نوع التوصية: [..]
+- سعر الدخول (Entry Price): [..] (المتوسط المرجعي: [M])
+- الهدف الأول (Target 1): [السعر] ([±X.X]%)
+- الهدف الثاني (Target 2): [السعر] ([±X.X]%)
+- الهدف الثالث (Target 3): [السعر] ([±X.X]%)
+- وقف الخسارة (Stop Loss): [السعر] ([±X.X]%)
+- ملخص التحليل: [سطران كحد أقصى]
+- إخلاء مسؤولية: أدرك تماماً أن هذه التوصيات هي نتاج تحليل فني واحتمالات وقد لا تكون دقيقة، وهي ليست نصيحة مالية. تداول العملات الرقمية ينطوي على مخاطر عالية جداً وقد يؤدي إلى خسارة كامل رأس المال.
+
+ملاحظات تنفيذية
+- التزم بنسبة مخاطرة لا تتجاوز 2–3% لكل صفقة، ويمكن تحريك وقف الخسارة إلى نقطة الدخول بعد تحقق الهدف 1.
+- حدّث المدخلات (الأسعار/الأطر) كل 4–6 ساعات لتوافق طبيعة السوق المتقلبة.
+
+بيانات السوق الحالية للتحليل:
+${marketDataForPrompt}`;
+
+    // 4. Call Gemini AI
+    const analysis = await analyzeWithAI(userPrompt, true); // Use raw prompt
+    return analysis;
 }
-
 
 // =================================================================
 // SECTION 5: BACKGROUND JOBS & DYNAMIC MANAGEMENT
 // =================================================================
+
+async function runHourlyRecommendationJob() {
+    try {
+        await sendDebugMessage("Running hourly AI recommendation scan...");
+        const recommendations = await getAIScalpingRecommendations();
+        if (recommendations && !recommendations.startsWith('❌') && !recommendations.startsWith('ℹ️')) {
+            const sanitizedMessage = sanitizeMarkdownV2(recommendations);
+            await bot.api.sendMessage(AUTHORIZED_USER_ID, `*🧠 توصيات فنية آلية \\(سكالبينغ/يومي\\)*\n\n${sanitizedMessage}`, { parse_mode: "MarkdownV2" });
+        } else {
+             await sendDebugMessage(`AI recommendation generation skipped or failed: ${recommendations}`);
+        }
+    } catch (e) {
+        console.error("CRITICAL ERROR in runHourlyRecommendationJob:", e);
+        await sendDebugMessage(`CRITICAL ERROR in runHourlyRecommendationJob: ${e.message}`);
+    }
+}
 
 async function checkTechnicalPatterns() {
     try {
@@ -1055,7 +976,6 @@ async function updatePositionAndAnalyze(asset, amountChange, price, newTotalAmou
     return { analysisResult };
 }
 
-// *** MODIFIED V146.0: Integrated latency tracking and market context ***
 async function monitorBalanceChanges() {
     if (isProcessingBalance) {
         await sendDebugMessage("Balance check skipped: a process is already running.");
@@ -1237,7 +1157,6 @@ async function monitorVirtualTrades() { const activeTrades = await getActiveVirt
 async function formatDailyCopyReport() { const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000); const closedTrades = await getCollection("tradeHistory").find({ closedAt: { $gte: twentyFourHoursAgo } }).toArray(); if (closedTrades.length === 0) { return "📊 لم يتم إغلاق أي صفقات في الـ 24 ساعة الماضية."; } const today = new Date(); const dateString = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`; let report = `📊 تقرير النسخ اليومي – خلال الـ24 ساعة الماضية\n🗓 التاريخ: ${dateString}\n\n`; let totalPnlWeightedSum = 0; let totalWeight = 0; for (const trade of closedTrades) { if (trade.pnlPercent === undefined || trade.entryCapitalPercent === undefined) continue; const resultEmoji = trade.pnlPercent >= 0 ? '🔼' : '🔽'; report += `🔸اسم العملة: ${trade.asset}\n`; report += `🔸 نسبة الدخول من رأس المال: ${formatNumber(trade.entryCapitalPercent)}%\n`; report += `🔸 متوسط سعر الشراء: ${formatSmart(trade.avgBuyPrice)}\n`; report += `🔸 سعر الخروج: ${formatSmart(trade.avgSellPrice)}\n`; report += `🔸 نسبة الخروج من الكمية: ${formatNumber(trade.exitQuantityPercent)}%\n`; report += `🔸 النتيجة: ${trade.pnlPercent >= 0 ? '+' : ''}${formatNumber(trade.pnlPercent)}% ${resultEmoji}\n\n`; if (trade.entryCapitalPercent > 0) { totalPnlWeightedSum += trade.pnlPercent * trade.entryCapitalPercent; totalWeight += trade.entryCapitalPercent; } } const totalPnl = totalWeight > 0 ? totalPnlWeightedSum / totalWeight : 0; const totalPnlEmoji = totalPnl >= 0 ? '📈' : '📉'; report += `إجمالي الربح الحالي خدمة النسخ: ${totalPnl >= 0 ? '+' : ''}${formatNumber(totalPnl, 2)}% ${totalPnlEmoji}\n\n`; report += `✍️ يمكنك الدخول في اي وقت تراه مناسب، الخدمة مفتوحة للجميع\n\n`; report += `📢 قناة التحديثات الرسمية:\n@abusalamachart\n\n`; report += `🌐 رابط النسخ المباشر:\n🏦 https://t.me/abusalamachart`; return report; }
 async function runDailyReportJob() { try { await sendDebugMessage("Running daily copy-trading report job..."); const report = await formatDailyCopyReport(); if (report.startsWith("📊 لم يتم إغلاق أي صفقات")) { await bot.api.sendMessage(AUTHORIZED_USER_ID, report); } else { await bot.api.sendMessage(process.env.TARGET_CHANNEL_ID, report); await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ تم إرسال تقرير النسخ اليومي إلى القناة بنجاح."); } } catch(e) { console.error("Error in runDailyReportJob:", e); await bot.api.sendMessage(AUTHORIZED_USER_ID, `❌ حدث خطأ أثناء إنشاء تقرير النسخ اليومي: ${e.message}`); } }
 
-// *** MODIFIED V146.3: Refactored to return a string instead of sending a message ***
 async function formatCumulativeReport(asset) {
     try {
         const trades = await getCollection("tradeHistory").find({ asset: asset }).toArray();
@@ -1282,24 +1201,17 @@ async function formatCumulativeReport(asset) {
 // =================================================================
 // SECTION 6: BOT KEYBOARDS & MENUS
 // =================================================================
-// *** MODIFIED V146.5: Restored "Review Trades" and all other buttons ***
 const mainKeyboard = new Keyboard()
     .text("📊 عرض المحفظة").text("📈 أداء المحفظة").text("🚀 تحليل السوق").row()
     .text("📜 تقرير شامل").text("🔍 مراجعة الصفقات").text("📈 تحليل تراكمي").row()
     .text("⏱️ لوحة النبض").text("📝 ملخص اليوم").text("⚡ إحصائيات سريعة").row()
-    .text("🧠 تحليل بالذكاء الاصطناعي").text("💡 توصية افتراضية").text("🧮 حاسبة الربح والخسارة").row()
+    .text("🧠 طلب توصية الآن").text("💡 توصية افتراضية").text("🧮 حاسبة الربح والخسارة").row()
     .text("⚙️ الإعدادات").resized();
 
 
 const virtualTradeKeyboard = new InlineKeyboard()
     .text("➕ إضافة توصية جديدة", "add_virtual_trade").row()
     .text("📈 متابعة التوصيات الحية", "track_virtual_trades");
-
-const aiKeyboard = new InlineKeyboard()
-    .text("💼 تحليل المحفظة", "ai_analyze_portfolio")
-    .text("🪙 تحليل عملة", "ai_analyze_coin").row()
-    .text("📰 أخبار عامة", "ai_get_general_news")
-    .text("📈 أخبار محفظتي", "ai_get_portfolio_news");
 
 async function sendSettingsMenu(ctx) {
     const settings = await loadSettings();
@@ -1494,8 +1406,12 @@ async function handleTextMessage(ctx, text) {
                 await ctx.reply("✍️ يرجى إرسال رمز العملة التي تود تحليلها \\(مثال: `BTC`\\)\\.", {parse_mode: "MarkdownV2"});
                 break;
 
-            case "🧠 تحليل بالذكاء الاصطناعي":
-                await ctx.reply("اختر نوع التحليل الذي تريده:", { reply_markup: aiKeyboard });
+            case "🧠 طلب توصية الآن":
+                loadingMessage.id = (await ctx.reply("⏳ جاري فحص السوق وإعداد التوصيات الفورية...")).message_id;
+                loadingMessage.chat_id = ctx.chat.id;
+                const recommendations = await getAIScalpingRecommendations();
+                const sanitizedRecs = sanitizeMarkdownV2(recommendations);
+                await ctx.api.editMessageText(loadingMessage.chat_id, loadingMessage.id, `*🧠 توصيات فنية آلية \\(سكالبينغ/يومي\\)*\n\n${sanitizedRecs}`, { parse_mode: "MarkdownV2" });
                 break;
 
             case "🧮 حاسبة الربح والخسارة":
@@ -1526,40 +1442,6 @@ async function handleTextMessage(ctx, text) {
 
 async function handleCallbackQuery(ctx, data) {
     try {
-        if (data === "ai_get_general_news") {
-            await ctx.editMessageText("📰 جاري جلب وتلخيص آخر الأخبار العامة\\.\\.\\.");
-            const summary = await getAIGeneralNewsSummary();
-            const sanitizedSummary = sanitizeMarkdownV2(summary);
-            await ctx.editMessageText(`*📰 ملخص الأخبار العامة بالذكاء الاصطناعي*\n\n${sanitizedSummary}`, { parse_mode: "MarkdownV2" });
-            return;
-        }
-
-        if (data === "ai_get_portfolio_news") {
-            await ctx.editMessageText("📈 جاري جلب وتلخيص الأخبار المتعلقة بمحفظتك\\.\\.\\.");
-            const summary = await getAIPortfolioNewsSummary();
-            const sanitizedSummary = sanitizeMarkdownV2(summary);
-            await ctx.editMessageText(`*📈 ملخص أخبار محفظتك بالذكاء الاصطناعي*\n\n${sanitizedSummary}`, { parse_mode: "MarkdownV2" });
-            return;
-        }
-
-        if (data === "ai_analyze_portfolio") {
-            await ctx.editMessageText("🧠 جاري طلب تحليل المحفظة من الذكاء الاصطناعي\\.\\.\\.");
-            const prices = await getCachedMarketPrices();
-            if (!prices || prices.error) return await ctx.editMessageText("❌ فشل جلب بيانات السوق\\.");
-            const capital = await loadCapital();
-            const { assets, total } = await okxAdapter.getPortfolio(prices);
-            const aiResponse = await getAIAnalysisForPortfolio(assets, total, capital);
-            const sanitizedResponse = sanitizeMarkdownV2(aiResponse);
-            await ctx.editMessageText(`*🧠 تحليل الذكاء الاصطناعي \\- المحفظة*\n\n${sanitizedResponse}`, { parse_mode: "MarkdownV2" });
-            return;
-        }
-
-        if (data === "ai_analyze_coin") {
-            waitingState = "ai_ask_coin";
-            await ctx.editMessageText("✍️ أرسل رمز العملة التي ترغب في تحليلها \\(مثل BTC\\)\\.");
-            return;
-        }
-
         if (data.startsWith("review_trade_")) {
             const tradeId = data.split('_')[2];
             await ctx.editMessageText(`⏳ جاري تحليل صفقة \`${sanitizeMarkdownV2(tradeId.substring(0, 8))}\\.\\.\\. \``, { parse_mode: "MarkdownV2" });
@@ -1665,14 +1547,6 @@ async function handleCallbackQuery(ctx, data) {
 async function handleWaitingState(ctx, state, text) {
     try {
         switch (state) {
-            case 'ai_ask_coin':
-                const coin = text.toUpperCase();
-                const loading = await ctx.reply(`🧠 جاري تحليل عملة ${sanitizeMarkdownV2(coin)} باستخدام الذكاء الاصطناعي\\.\\.\\.`, { parse_mode: "MarkdownV2" });
-                const aiResponse = await getAIAnalysisForAsset(coin);
-                const sanitizedResponse = sanitizeMarkdownV2(aiResponse);
-                await ctx.api.editMessageText(loading.chat.id, loading.message_id, `*🧠 تحليل الذكاء الاصطناعي \\| ${sanitizeMarkdownV2(coin)}*\n\n${sanitizedResponse}`, { parse_mode: "MarkdownV2" });
-                break;
-            
             case 'cumulative_analysis_asset':
                 const report = await formatCumulativeReport(text.toUpperCase());
                 await ctx.reply(report, { parse_mode: "MarkdownV2" });
@@ -1746,7 +1620,7 @@ async function handleWaitingState(ctx, state, text) {
                     await getCollection("configs").deleteMany({});
                     await getCollection("virtualTrades").deleteMany({});
                     await getCollection("tradeHistory").deleteMany({});
-                    await getCollection("latencyLogs").deleteMany({}); // *** NEW V146.0: Delete latency logs ***
+                    await getCollection("latencyLogs").deleteMany({});
                     await ctx.reply("✅ تم حذف جميع بياناتك\\.");
                 } else {
                     await ctx.reply("❌ تم إلغاء الحذف\\.");
@@ -1805,7 +1679,6 @@ async function handleWaitingState(ctx, state, text) {
 // =================================================================
 app.get("/healthcheck", (req, res) => res.status(200).send("OK"));
 
-// *** NEW V146.3: Unified Daily Report Function ***
 async function generateUnifiedDailyReport() {
     try {
         let fullReport = `📜 *التقرير اليومي الشامل*\n*بتاريخ: ${sanitizeMarkdownV2(new Date().toLocaleString("ar-EG", { timeZone: "Africa/Cairo" }))}*\n\n`;
@@ -1882,6 +1755,7 @@ async function startBot() {
         setInterval(checkPriceMovements, 60 * 1000);
         setInterval(monitorVirtualTrades, 30 * 1000);
         setInterval(runHourlyJobs, 60 * 60 * 1000);
+        setInterval(runHourlyRecommendationJob, 60 * 60 * 1000); // New hourly job for recommendations
         setInterval(runDailyJobs, 24 * 60 * 60 * 1000);
         setInterval(runDailyReportJob, 24 * 60 * 60 * 1000);
         setInterval(createBackup, BACKUP_INTERVAL);
@@ -1894,7 +1768,7 @@ async function startBot() {
         // Start real-time monitoring
         connectToOKXSocket();
 
-        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v146\\.5 \\- UI Restoration II\\)*\n\n\\- تم إصلاح واجهة الأزرار وإعادة زر مراجعة الصفقات\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
+        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v147\\.1 \\- Parse Mode Fix\\)*\n\n\\- تم إصلاح خطأ تنسيق الرسائل وإعادة تشغيل البوت\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
 
     } catch (e) {
         console.error("FATAL: Could not start the bot.", e);
@@ -1926,7 +1800,7 @@ function connectToOKXSocket() {
     });
 
     ws.on('message', async (data) => {
-        const signalTime = Date.now(); // *** NEW V146.0: Capture signal time here ***
+        const signalTime = Date.now();
         const rawData = data.toString();
 
         if (rawData === 'pong') {
@@ -1949,7 +1823,6 @@ function connectToOKXSocket() {
             if (message.arg?.channel === 'account' && message.data) {
                 console.log("Real-time balance update received via WebSocket.");
                 await sendDebugMessage("تحديث لحظي للرصيد، جاري المعالجة...");
-                // Pass the signal time to the handler
                 await monitorBalanceChanges(signalTime);
             }
 
@@ -1977,3 +1850,4 @@ function connectToOKXSocket() {
 
 
 startBot();
+
