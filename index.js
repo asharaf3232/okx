@@ -1,5 +1,5 @@
 // =================================================================
-// Advanced Analytics Bot - v147.1 (Parse Mode Fix)
+// Advanced Analytics Bot - v147.2 (Hourly Heartbeat)
 // =================================================================
 // --- IMPORTS ---
 const express = require("express");
@@ -810,17 +810,25 @@ async function runHourlyRecommendationJob() {
     try {
         await sendDebugMessage("Running hourly AI recommendation scan...");
         const recommendations = await getAIScalpingRecommendations();
+
+        // If recommendations are found and it's not an error/info message
         if (recommendations && !recommendations.startsWith('❌') && !recommendations.startsWith('ℹ️')) {
             const sanitizedMessage = sanitizeMarkdownV2(recommendations);
             await bot.api.sendMessage(AUTHORIZED_USER_ID, `*🧠 توصيات فنية آلية \\(سكالبينغ/يومي\\)*\n\n${sanitizedMessage}`, { parse_mode: "MarkdownV2" });
         } else {
-             await sendDebugMessage(`AI recommendation generation skipped or failed: ${recommendations}`);
+            // Send a "heartbeat" message to the user confirming the scan ran
+            const noRecsMessage = `*⏱️ تقرير الفحص الآلي للسوق*\n\nلم يتم العثور على فرص تداول واضحة تتوافق مع المعايير الحالية\\. سيتم إعادة الفحص تلقائيًا بعد ساعة\\.`;
+            await bot.api.sendMessage(AUTHORIZED_USER_ID, noRecsMessage, { parse_mode: "MarkdownV2" });
+            
+            // Also, keep the debug message for more detailed internal logging.
+            await sendDebugMessage(`AI recommendation generation skipped or failed: ${recommendations}`);
         }
     } catch (e) {
         console.error("CRITICAL ERROR in runHourlyRecommendationJob:", e);
         await sendDebugMessage(`CRITICAL ERROR in runHourlyRecommendationJob: ${e.message}`);
     }
 }
+
 
 async function checkTechnicalPatterns() {
     try {
@@ -1768,7 +1776,7 @@ async function startBot() {
         // Start real-time monitoring
         connectToOKXSocket();
 
-        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v147\\.1 \\- Parse Mode Fix\\)*\n\n\\- تم إصلاح خطأ تنسيق الرسائل وإعادة تشغيل البوت\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
+        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v147\\.2 \\- Hourly Heartbeat\\)*\n\n\\- سيقوم البوت الآن بإرسال رسالة تأكيد كل ساعة حتى لو لم يجد توصيات\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
 
     } catch (e) {
         console.error("FATAL: Could not start the bot.", e);
@@ -1850,4 +1858,3 @@ function connectToOKXSocket() {
 
 
 startBot();
-
