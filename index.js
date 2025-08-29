@@ -1,5 +1,5 @@
 // =================================================================
-// Advanced Analytics Bot - v147.2 (Hourly Heartbeat)
+// Advanced Analytics Bot - v147.3 (Expanded & Refined Recommendations)
 // =================================================================
 // --- IMPORTS ---
 const express = require("express");
@@ -720,9 +720,16 @@ async function getAIScalpingRecommendations() {
 
     const marketData = Object.entries(prices)
         .map(([instId, data]) => ({ instId, ...data }))
-        .filter(d => d.volCcy24h > 100000 && !d.instId.startsWith('USDC') && !d.instId.startsWith('DAI') && !d.instId.startsWith('TUSD')) // Filter high volume and exclude some stablecoins
+        .filter(d => 
+            d.volCcy24h > 100000 && 
+            !d.instId.startsWith('USDC') && 
+            !d.instId.startsWith('DAI') && 
+            !d.instId.startsWith('TUSD') &&
+            !d.instId.startsWith('BTC') &&
+            !d.instId.startsWith('ETH')
+        )
         .sort((a, b) => b.volCcy24h - a.volCcy24h)
-        .slice(0, 100);
+        .slice(0, 200);
 
     if (marketData.length === 0) {
         return "ℹ️ لا توجد بيانات كافية في السوق حاليًا لتوليد توصيات.";
@@ -735,7 +742,7 @@ async function getAIScalpingRecommendations() {
 
     // 3. The new prompt from the user
     const userPrompt = `تقمّص دور محلل فني محترف متخصص في السكالبينغ والتداول اليومي في سوق العملات الرقمية. مهمتك:
-1) بناءً على بيانات السوق التالية، قم بإجراء مسح لأكثر 100 عملة تداولاً آخر 24 ساعة، ثم ترشيح 2–3 عملات فقط ذات فرصة تداول واضحة (شراء أو بيع) وفق تلاقي إشارات فنية قوية على أُطر 4H و1H، مع نظرة يومية لتحديد الاتجاه العام.
+1) بناءً على بيانات السوق التالية، قم بإجراء مسح لأكثر 200 عملة تداولاً آخر 24 ساعة (باستثناء BTC و ETH)، ثم ترشيح 3–4 عملات فقط ذات فرصة تداول واضحة (شراء أو بيع) وفق تلاقي إشارات فنية قوية على أُطر 4H و1H، مع نظرة يومية لتحديد الاتجاه العام.
 2) لكل عملة مرشحة، أنشئ توصية منفصلة بالصيغة أدناه بدقة، واملأ كل الحقول بقيم عددية محددة (لا تترك نطاقات مفتوحة إلا في “منطقة دخول” مع ذكر متوسط مرجعي لحساب النِسب):
 - العملة: [اسم العملة والرمز]
 - نوع التوصية: (شراء / بيع)
@@ -775,11 +782,11 @@ async function getAIScalpingRecommendations() {
 - ضع وقف خسارة منطقياً أسفل/أعلى منطقة الطلب/العرض أو أسفل/أعلى قاع/قمة كسرية حديثة.
 - احسب وأظهر النِسب المئوية لكل هدف ووقف الخسارة كما في القواعد أعلاه.
 - اجعل “ملخص التحليل” لا يتجاوز سطرين مكثفين.
-- لا تتجاوز 3 توصيات نهائية.
+- لا تتجاوز 4 توصيات نهائية.
 
 شكل الإخراج النهائي
 قدّم فقط التوصيات بصيغة القوائم التالية لكل عملة، دون مقدمات أو شروحات إضافية:
-[كرّر البلوك التالي 2–3 مرات كحد أقصى]
+[كرّر البلوك التالي 3–4 مرات كحد أقصى]
 - العملة: [..]
 - نوع التوصية: [..]
 - سعر الدخول (Entry Price): [..] (المتوسط المرجعي: [M])
@@ -1776,7 +1783,7 @@ async function startBot() {
         // Start real-time monitoring
         connectToOKXSocket();
 
-        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v147\\.2 \\- Hourly Heartbeat\\)*\n\n\\- سيقوم البوت الآن بإرسال رسالة تأكيد كل ساعة حتى لو لم يجد توصيات\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
+        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v147\\.3 \\- Expanded & Refined Recommendations\\)*\n\n\\- تم توسيع نطاق البحث إلى 200 عملة مع استثناء BTC/ETH وزيادة عدد التوصيات إلى 4\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
 
     } catch (e) {
         console.error("FATAL: Could not start the bot.", e);
