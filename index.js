@@ -1,5 +1,5 @@
 // =================================================================
-// Advanced Analytics Bot - v147.4 (Auto Virtual Trades & Deletion)
+// Advanced Analytics Bot - v147.5 (Markdown Parse Fix)
 // =================================================================
 // --- IMPORTS ---
 const express = require("express");
@@ -863,10 +863,10 @@ async function runHourlyRecommendationJob() {
                         // Helper to parse entry price string like "1.2 - 1.3" or "1.25"
                         const getAvgEntryPrice = (entryStr) => {
                             const parts = entryStr.split('-').map(p => parseFloat(p.trim()));
-                            if (parts.length > 1) {
+                            if (parts.length > 1 && !isNaN(parts[0]) && !isNaN(parts[1])) {
                                 return (parts[0] + parts[1]) / 2;
                             }
-                            return parts[0];
+                            return parseFloat(entryStr);
                         };
 
                         const entryPrice = getAvgEntryPrice(rec.entryPriceStr);
@@ -1647,7 +1647,7 @@ async function handleCallbackQuery(ctx, data) {
                                  ` ▫️ *الدخول:* \`$${sanitizeMarkdownV2(formatSmart(trade.entryPrice))}\`\n` +
                                  ` ▫️ *الحالي:* \`$${sanitizeMarkdownV2(formatSmart(currentPrice || 0))}\`\n` +
                                  ` ▫️ *الربح/الخسارة:* ${pnlText}\n` +
-                                 ` ▫️ *الهدف:* \`$${sanitizeMarkdownV2(formatSmart(trade.targetPrice))}\` | *الوقف:* \`$${sanitizeMarkdownV2(formatSmart(trade.stopLossPrice))}\`\n`+
+                                 ` ▫️ *الهدف:* \`$${sanitizeMarkdownV2(formatSmart(trade.targetPrice))}\` \\| *الوقف:* \`$${sanitizeMarkdownV2(formatSmart(trade.stopLossPrice))}\`\n`+
                                  "━━━━━━━━━━━━━━━━━━━━\n";
 
                     keyboard.text(`🗑️ حذف ${trade.instId}`, `delete_virtual_trade_${trade._id}`).row();
@@ -1914,7 +1914,7 @@ async function startBot() {
         // Start real-time monitoring
         connectToOKXSocket();
 
-        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v147\\.4 \\- Auto Virtual Trades\\)*\n\n\\- يتم الآن تحويل التوصيات تلقائيًا إلى صفقات افتراضية مع إضافة خيار الحذف\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
+        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v147\\.5 \\- Markdown Parse Fix\\)*\n\n\\- تم إصلاح خطأ تنسيق عرض التوصيات الافتراضية\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
 
     } catch (e) {
         console.error("FATAL: Could not start the bot.", e);
