@@ -712,96 +712,7 @@ async function analyzeWithAI(prompt, raw = false) {
         return "❌ تعذر إجراء التحليل بالذكاء الاصطناعي. قد يكون هناك مشكلة في الاتصال أو المفتاح السري.";
     }
 }
-// --- AI Analysis Services ---
-async function analyzeWithAI(prompt, raw = false) {
-    try {
-        // This is the main system prompt that defines the AI's persona and rules.
-        // It's kept separate from the user's dynamic request for better control.
-        const fullPrompt = raw ? prompt : `أنت محلل مالي خبير ومستشار استثماري متخصص في العملات الرقمية، تتحدث بالعربية الفصحى، وتقدم تحليلات دقيقة وموجزة. في نهاية كل تحليل، يجب عليك إضافة السطر التالي بالضبط كما هو: "هذا التحليل لأغراض معلوماتية فقط وليس توصية مالية."\n\n---\n\nالطلب: ${prompt}`;
-        const result = await geminiModel.generateContent(fullPrompt);
-        const response = await result.response;
-        if (response.promptFeedback?.blockReason) {
-            console.error("AI Analysis Blocked:", response.promptFeedback.blockReason);
-            return `❌ تم حظر التحليل من قبل Google لأسباب تتعلق بالسلامة: ${response.promptFeedback.blockReason}`;
-        }
-        return response.text().trim();
-    } catch (error) {
-        console.error("AI Analysis Error (Gemini):", error);
-        return "❌ تعذر إجراء التحليل بالذكاء الاصطناعي. قد يكون هناك مشكلة في الاتصال أو المفتاح السري.";
-    }
-}
 
-async function getAIScalpingRecommendations() {
-    // 1. Get market data from the cache or a live API.
-    const prices = await getCachedMarketPrices();
-    if (!prices || prices.error) return "❌ فشل جلب بيانات السوق لإعداد التوصيات.";
-
-    // 2. Filter and sort the market data to get the top 300 relevant assets.
-    // We filter for high volume and exclude specific stablecoins and major assets like BTC/ETH as per the new prompt.
-    const marketData = Object.entries(prices)
-        .map(([instId, data]) => ({ instId, ...data }))
-        .filter(d => 
-            d.volCcy24h > 100000 && // Filter for significant volume
-            !d.instId.startsWith('USDC') && 
-            !d.instId.startsWith('DAI') && 
-            !d.instId.startsWith('TUSD') &&
-            !d.instId.startsWith('BTC-USDT') && // Exclude BTC
-            !d.instId.startsWith('ETH-USDT') // Exclude ETH
-        ) 
-        .sort((a, b) => b.volCcy24h - a.volCcy24h)
-        .slice(0, 300); // Take the top 300 as requested
-
-    if (marketData.length === 0) {
-        return "ℹ️ لا توجد بيانات كافية في السوق حاليًا لتوليد توصيات.";
-    }
-
-    // 3. Prepare the market data string to be injected into the prompt.
-    const marketDataForPrompt = marketData.map(d =>
-        `Symbol: ${d.instId}, Price: ${d.price}, 24h_Change: ${(d.change24h * 100).toFixed(2)}%, 24h_Volume_USDT: ${d.volCcy24h.toFixed(0)}`
-    ).join('\n');
-
-    // 4. The new, updated user prompt with detailed instructions for the AI model.
-    const userPrompt = `تقمّص دور محلل فني محترف متخصص في السكالبينغ والتداول اليومي في سوق العملات الرقمية. مهمتك:
-
-بالاعتماد على بيانات السوق الفعلية، نفّذ مسحاً لأعلى 300 عملة من حيث حجم التداول لآخر 24 ساعة، مع استثناء البيتكوين (BTC) والإيثريوم (ETH) والعُملات المستقرة وأي أصول ذات سيولة غير عضوية أو سبريد مبالغ فيه.
-
-رشّح 5 عملات فقط تقدّم حالياً أوضح فرص تداول مضاربية (شراء أو بيع) وفق تلاقي إشارات فنية قوية على إطارَي 4H و1H، مع نظرة يومية (Daily) مختصرة لتحديد الاتجاه العام.
-
-رتّب التوصيات الخمس تصاعدياً من الأقوى إلى الأضعف بناءً على درجة تلاقي الإشارات والمصداقية التنفيذية (قوة الاتجاه، وضوح الهيكل، جودة الاختراق/الكسر، التأكيد الحجمي، RR الفعّالة).
-
-التزم بالفلاتر الذكية التالية أثناء المسح والاختيار:
-
-مرحلة السوق:
-
-منطقة تجميع قرب قاع محلي مع تقلّص بولنجر وتزايد حجم تدريجي.
-
-صعود/هبوط غير مكتمل: موجة دافعة لم تبلغ مقاومات/دعوم محورية أو نسب فيبوناتشي الرئيسية.
-
-كسر/اختراق حديث مع إعادة اختبار ناجحة لمنطقة طلب/عرض.
-
-تلاقي المؤشرات:
-
-تموضع السعر مع الاتجاه مقابل EMA21/EMA50/SMA100.
-
-RSI: فوق/تحت 50 بحسب الاتجاه، أو دايفرجنس داعم (كلاسيكي/مخفي).
-
-MACD: تقاطع مع اتساع هيستوغرام في اتجاه الصفقة.
-
-بولنجر: انضغاط سابق يليه توسّع، أو إغلاق خارج النطاق مع إعادة اختبار.
-
-فيبوناتشي: تحديد الأهداف عند 38.2%/50%/61.8% من آخر موجة.
-
-حجم/Volume Profile: تأكيد عند عقد سعرية مهمة (HVN/LVN) وحجم أعلى من المتوسط على شموع الدافعة.
-
-فلاتر إضافية اختيارية:
-
-قوة النبضة: تغيّر ≥ 2% خلال آخر 4 ساعات مع حجم > متوسط 10 شموع.
-
-سيولة التنفيذ: حجم 24 ساعة ≥ عتبة مناسبة للبورصة المحددة لتقليل الانزلاق.
-
-استبعاد حالات RSI المتطرفة (>75 أو <25) إذا خلت من دلائل انعكاس/تلاقي.
-
-قواعد حساب النِسب المئوية
 // --- AI Analysis Services ---
 async function analyzeWithAI(prompt, raw = false) {
     try {
@@ -941,7 +852,7 @@ async function getCachedMarketPrices() {
         "ETH-USDT": { price: 3500, change24h: 0.02, volCcy24h: 25000000000 },
     };
 }
-}
+
 // =================================================================
 // SECTION 5: BACKGROUND JOBS & DYNAMIC MANAGEMENT
 // =================================================================
