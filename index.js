@@ -2190,7 +2190,7 @@ async function startBot() {
             toggleHealthCheck(true);
         }
 
-        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v148\\.1 \\- Scanner Toggle\\)*\n\n\\- يمكنك الآن تفعيل/تعطيل الماسح الفني الآلي من الإعدادات\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
+        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v148\\.2 \\- Flexible Prompt\\)*\n\n\\- تم تحسين منطق الذكاء الاصطناعي ليكون أكثر مرونة في إيجاد فرص التداول\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
 
     } catch (e) {
         console.error("FATAL: Could not start the bot.", e);
