@@ -1,5 +1,5 @@
 // =================================================================
-// Advanced Analytics Bot - v148.1 (Scanner Toggle)
+// Advanced Analytics Bot - v148.2 (Flexible Prompt)
 // =================================================================
 // --- IMPORTS ---
 const express = require("express");
@@ -578,6 +578,8 @@ async function formatAdvancedMarketAnalysis(ownedAssets = []) {
     return msg;
 }
 async function formatQuickStats(assets, total, capital) { const pnl = capital > 0 ? total - capital : 0; const pnlPercent = capital > 0 ? (pnl / capital) * 100 : 0; const statusEmoji = pnl >= 0 ? '🟢' : '🔴'; const statusText = pnl >= 0 ? 'ربح' : 'خسارة'; let msg = "⚡ *إحصائيات سريعة*\n\n"; msg += `💎 *إجمالي الأصول:* \`${assets.filter(a => a.asset !== 'USDT').length}\`\n`; msg += `💰 *القيمة الحالية:* \`$${sanitizeMarkdownV2(formatNumber(total))}\`\n`; if (capital > 0) { msg += `📈 *نسبة الربح/الخسارة:* \`${sanitizeMarkdownV2(formatNumber(pnlPercent))}%\`\n`; msg += `🎯 *الحالة:* ${statusEmoji} ${statusText}\n`; } msg += `\n━━━━━━━━━━━━━━━━━━━━\n*تحليل القمم والقيعان للأصول:*\n`; const cryptoAssets = assets.filter(a => a.asset !== "USDT"); if (cryptoAssets.length === 0) { msg += "\n`لا توجد أصول في محفظتك لتحليلها\\.`"; } else { const assetExtremesPromises = cryptoAssets.map(asset => getAssetPriceExtremes(`${asset.asset}-USDT`) ); const assetExtremesResults = await Promise.all(assetExtremesPromises); cryptoAssets.forEach((asset, index) => { const extremes = assetExtremesResults[index]; msg += `\n🔸 *${sanitizeMarkdownV2(asset.asset)}:*\n`; if (extremes) { msg += ` *الأسبوعي:* قمة \`$${sanitizeMarkdownV2(formatSmart(extremes.weekly.high))}\` / قاع \`$${sanitizeMarkdownV2(formatSmart(extremes.weekly.low))}\`\n`; msg += ` *الشهري:* قمة \`$${sanitizeMarkdownV2(formatSmart(extremes.monthly.high))}\` / قاع \`$${sanitizeMarkdownV2(formatSmart(extremes.monthly.low))}\`\n`; msg += ` *السنوي:* قمة \`$${sanitizeMarkdownV2(formatSmart(extremes.yearly.high))}\` / قاع \`$${sanitizeMarkdownV2(formatSmart(extremes.yearly.low))}\`\n`; msg += ` *التاريخي:* قمة \`$${sanitizeMarkdownV2(formatSmart(extremes.allTime.high))}\` / قاع \`$${sanitizeMarkdownV2(formatSmart(extremes.allTime.low))}\``; } else { msg += ` \`تعذر جلب البيانات التاريخية\\.\``; } }); } msg += `\n\n⏰ *آخر تحديث:* ${sanitizeMarkdownV2(new Date().toLocaleString("ar-EG", { timeZone: "Africa/Cairo" }))}`; return msg; }
+
+// --- MODIFIED V148.0: Fixed typo 'pnlPercent' to 'stats.pnlPercent' ---
 async function formatPerformanceReport(period, periodLabel, history, btcHistory) {
     const stats = calculatePerformanceStats(history);
     if (!stats) return { error: "ℹ️ لا توجد بيانات كافية لهذه الفترة\\." };
@@ -612,6 +614,7 @@ async function formatPerformanceReport(period, periodLabel, history, btcHistory)
     caption += `▪️ *مستوى التقلب:* ${sanitizeMarkdownV2(stats.volText)}`;
     return { caption, chartUrl };
 }
+
 
 function formatMarketContextCard(context) {
     if (!context || context.error) return "";
@@ -801,14 +804,12 @@ function parseRecommendationsFromText(text) {
     }
 }
 
-// --- MODIFIED V147.8: Enhanced AI Prompt ---
+// --- MODIFIED V148.2: More Flexible and Strict AI Prompt ---
 async function getAIScalpingRecommendations(focusedCoins = []) {
     let marketDataForPrompt;
     let analysisHeader = "بناءً على مسح لأفضل 200 عملة تداولاً";
-    let analysisContext = "general_scan";
 
     if (focusedCoins.length > 0) {
-        analysisContext = "triggered_scan";
         analysisHeader = `بناءً على رصد إشارات فنية أولية على العملات التالية: ${focusedCoins.join(', ')}`;
         const prices = await getCachedMarketPrices();
         if (!prices || prices.error) return "❌ فشل جلب بيانات السوق لإعداد التوصيات.";
@@ -844,14 +845,13 @@ async function getAIScalpingRecommendations(focusedCoins = []) {
         ).join('\n');
     }
 
-    // This preamble is crucial to prevent the AI from hallucinating about data access.
     const preamble = `أنت بوت تحليل فني متقدم. مصدرك الوحيد للمعلومات هو بيانات السوق اللحظية المُقدمة لك أدناه. لا تذكر أبدًا أنك لا تستطيع الوصول إلى البيانات أو أنك نموذج لغوي. مهمتك هي تحليل البيانات المقدمة فقط وإنشاء توصيات تداول حقيقية وقابلة للتنفيذ بناءً عليها.`;
 
     const userPrompt = `${preamble}
 
 **المهمة:**
-1) ${analysisHeader} (باستثناء BTC و ETH)، قم بترشيح 3–4 عملات فقط ذات فرصة تداول واضحة (شراء أو بيع) وفق تلاقي إشارات فنية قوية على أُطر 4H و1H، مع نظرة يومية لتحديد الاتجاه العام.
-2) لكل عملة مرشحة، أنشئ توصية منفصلة بالصيغة أدناه بدقة، واملأ كل الحقول بقيم عددية محددة (لا تترك نطاقات مفتوحة إلا في “منطقة دخول” مع ذكر متوسط مرجعي لحساب النِسب):
+1) ${analysisHeader} (باستثناء BTC و ETH)، قم بترشيح 3–4 عملات لديها **أقوى تراكم للإشارات الإيجابية**. ليس من الضروري تواجد كل المؤشرات، لكن الأفضلية للفرص التي يظهر فيها **ثلاثة مؤشرات قوية متوافقة على الأقل** (مثال: اتجاه عام واضح + اختراق مستوى سعري مهم + تأكيد من مؤشر زخم مثل RSI أو MACD).
+2) لكل عملة مرشحة، أنشئ توصية منفصلة بالصيغة أدناه بدقة، واملأ كل الحقول بقيم عددية محددة:
 - العملة: [اسم العملة والرمز]
 - نوع التوصية: (شراء / بيع)
 - سعر الدخول (Entry Price): [سعر محدد أو منطقة مثل A–B مع ذكر المتوسط المرجعي: M]
@@ -864,7 +864,7 @@ async function getAIScalpingRecommendations(focusedCoins = []) {
 
 **قواعد صارمة:**
 - يجب أن تكون جميع القيم رقمية ومبنية حصراً على البيانات المتوفرة.
-- لا تقدم أي أمثلة افتراضية. إذا لم تجد فرصة حقيقية، أجب بـ "لا توجد فرص تداول واضحة حاليًا."
+- لا تقدم أي أمثلة افتراضية. إذا لم تجد فرصة حقيقية تتوافق مع معيار "3 مؤشرات متوافقة على الأقل"، أجب بـ "لا توجد فرص تداول واضحة حاليًا."
 
 **بيانات السوق الحالية للتحليل:**
 ${marketDataForPrompt}`;
@@ -1155,8 +1155,6 @@ async function updatePositionAndAnalyze(asset, amountChange, price, newTotalAmou
 
 async function monitorBalanceChanges() {
     if (isProcessingBalance) {
-        // This log is now less important due to debouncing but kept for safety.
-        // await sendDebugMessage("مراقبة الرصيد", "تخطي", "العملية السابقة لم تنته بعد.");
         return;
     }
     isProcessingBalance = true;
@@ -2192,7 +2190,7 @@ async function startBot() {
             toggleHealthCheck(true);
         }
 
-        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v148\\.0 \\- Hotfix\\)*\n\n\\- تم إصلاح خطأ في تقرير أداء المحفظة وتحسينات عامة\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
+        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v148\\.1 \\- Scanner Toggle\\)*\n\n\\- يمكنك الآن تفعيل/تعطيل الماسح الفني الآلي من الإعدادات\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
 
     } catch (e) {
         console.error("FATAL: Could not start the bot.", e);
@@ -2275,4 +2273,3 @@ function connectToOKXSocket() {
 
 
 startBot();
-
