@@ -1,5 +1,5 @@
 // =================================================================
-// Advanced Analytics Bot - v147.8 (AI Prompt & Debounce Fix)
+// Advanced Analytics Bot - v147.9 (Full Diagnostics)
 // =================================================================
 // --- IMPORTS ---
 const express = require("express");
@@ -1278,6 +1278,7 @@ async function checkPriceAlerts() {
 async function checkPriceMovements() {
     jobStatus.lastPriceMovementCheck = Date.now();
     try {
+        await sendDebugMessage("فحص حركة الأسعار", "بدء");
         const alertSettings = await loadAlertSettings();
         const oldPriceTracker = await loadPriceTracker();
         const prices = await getCachedMarketPrices();
@@ -1291,11 +1292,14 @@ async function checkPriceMovements() {
             assets: {}
         };
 
+        let alertsSent = 0;
+
         if (oldPriceTracker.totalPortfolioValue === 0) {
             assets.forEach(a => {
                 if (a.price) newPriceTracker.assets[a.asset] = a.price;
             });
             await savePriceTracker(newPriceTracker);
+             await sendDebugMessage("فحص حركة الأسعار", "إعداد أولي", "تم حفظ أسعار الأصول لأول مرة.");
             return;
         }
 
@@ -1310,6 +1314,7 @@ async function checkPriceMovements() {
                 const threshold = alertSettings.overrides[asset.asset] || alertSettings.global;
                 
                 if (Math.abs(changePercent) >= threshold) {
+                    alertsSent++;
                     const movementText = changePercent > 0 ? 'صعود' : 'هبوط';
                     const message = `📈 *تنبيه حركة سعر لأصل\\!* \`${sanitizeMarkdownV2(asset.asset)}\`\n*الحركة:* ${movementText} بنسبة \`${sanitizeMarkdownV2(formatNumber(changePercent))}%\`\n*السعر الحالي:* \`$${sanitizeMarkdownV2(formatSmart(asset.price))}\``;
                     await bot.api.sendMessage(AUTHORIZED_USER_ID, message, { parse_mode: "MarkdownV2" });
@@ -1323,6 +1328,7 @@ async function checkPriceMovements() {
             const globalThreshold = alertSettings.global;
 
             if (Math.abs(totalChangePercent) >= globalThreshold) {
+                alertsSent++;
                 const movementText = totalChangePercent > 0 ? 'صعود' : 'هبوط';
                 const message = `💼 *تنبيه حركة المحفظة\\!* \n*الحركة:* ${movementText} بنسبة \`${sanitizeMarkdownV2(formatNumber(totalChangePercent))}%\`\n*القيمة الحالية:* \`$${sanitizeMarkdownV2(formatNumber(currentTotalValue))}\``;
                 await bot.api.sendMessage(AUTHORIZED_USER_ID, message, { parse_mode: "MarkdownV2" });
@@ -1330,6 +1336,7 @@ async function checkPriceMovements() {
         }
 
         await savePriceTracker(newPriceTracker);
+        await sendDebugMessage("فحص حركة الأسعار", "نجاح", alertsSent > 0 ? `تم إرسال ${alertsSent} تنبيه.` : "لا توجد حركات سعرية تستدعي التنبيه.");
 
     } catch (e) {
         console.error("CRITICAL ERROR in checkPriceMovements:", e);
