@@ -1,5 +1,5 @@
 // =================================================================
-// Advanced Analytics Bot - v148.2 (Flexible Prompt)
+// Advanced Analytics Bot - v148.3 (Quota Management)
 // =================================================================
 // --- IMPORTS ---
 const express = require("express");
@@ -43,6 +43,7 @@ let marketCache = { data: null, ts: 0 };
 let isProcessingBalance = false;
 let healthCheckInterval = null; 
 let balanceCheckDebounceTimer = null;
+let pendingAnalysisQueue = new Set(); // --- NEW V148.3: For batching AI requests
 
 // --- Job Status Tracker ---
 const jobStatus = {
@@ -51,7 +52,8 @@ const jobStatus = {
     lastVirtualTradeCheck: 0,
     lastPositionTrack: 0,
     lastPriceAlertCheck: 0,
-    lastTechPatternCheck: 0
+    lastTechPatternCheck: 0,
+    lastQueueProcess: 0 // --- NEW V148.3
 };
 
 // --- AI Setup ---
@@ -877,29 +879,79 @@ ${marketDataForPrompt}`;
 // SECTION 5: BACKGROUND JOBS & DYNAMIC MANAGEMENT
 // =================================================================
 
-// --- NEW V147.7: Real-time Technical Scanner ---
+// --- NEW V147.7 -> v148.3: Batching AI analysis to avoid rate limits ---
+async function processAnalysisQueue() {
+    jobStatus.lastQueueProcess = Date.now();
+    if (pendingAnalysisQueue.size === 0) {
+        return;
+    }
+
+    try {
+        await sendDebugMessage("معالج الطلبات", "بدء", `تجميع ${pendingAnalysisQueue.size} فرصة للتحليل...`);
+        const coinsToAnalyze = Array.from(pendingAnalysisQueue);
+        pendingAnalysisQueue.clear();
+
+        const recommendationsText = await getAIScalpingRecommendations(coinsToAnalyze);
+        
+        if (recommendationsText && !recommendationsText.startsWith('❌') && !recommendationsText.startsWith('ℹ️') && !recommendationsText.includes("لا توجد فرص")) {
+            const parsedRecs = parseRecommendationsFromText(recommendationsText);
+            let createdCount = 0;
+            if (parsedRecs.length > 0) {
+                for (const rec of parsedRecs) {
+                    if (rec.type && rec.type.includes('شراء')) {
+                        const getAvgEntryPrice = (entryStr) => {
+                            const parts = entryStr.split('-').map(p => parseFloat(p.trim()));
+                            if (parts.length > 1 && !isNaN(parts[0]) && !isNaN(parts[1])) return (parts[0] + parts[1]) / 2;
+                            return parseFloat(entryStr);
+                        };
+                        const entryPrice = getAvgEntryPrice(rec.entryPriceStr);
+                        const targetPrice = parseFloat(rec.targetPriceStr);
+                        const stopLossPrice = parseFloat(rec.stopLossPriceStr);
+
+                        if ([entryPrice, targetPrice, stopLossPrice].every(p => !isNaN(p))) {
+                            await saveVirtualTrade({ instId: rec.instId, entryPrice, targetPrice, stopLossPrice, virtualAmount: 100, status: 'active', createdAt: new Date() });
+                            createdCount++;
+                        }
+                    }
+                }
+                if (createdCount > 0) {
+                    await bot.api.sendMessage(AUTHORIZED_USER_ID, `✅ تم تحليل السوق وإنشاء *${createdCount}* توصية افتراضية جديدة تلقائيًا للمتابعة\\.`, { parse_mode: "MarkdownV2"});
+                }
+            }
+            const sanitizedMessage = sanitizeMarkdownV2(recommendationsText);
+            await bot.api.sendMessage(AUTHORIZED_USER_ID, `*🧠 توصيات فنية \\(تم رصدها الآن\\)*\n\n${sanitizedMessage}`, { parse_mode: "MarkdownV2" });
+            await sendDebugMessage("معالج الطلبات", "نجاح", `تم إرسال ${parsedRecs.length} توصية.`);
+        } else {
+             await sendDebugMessage("معالج الطلبات", "معلومات", `الذكاء الاصطناعي لم يؤكد الفرص المرصودة.`);
+        }
+
+    } catch (e) {
+        console.error("CRITICAL ERROR in processAnalysisQueue:", e);
+        await sendDebugMessage("معالج الطلبات", "فشل", e.message);
+    }
+}
+
 async function scanForSetups() {
     jobStatus.lastRecommendationScan = Date.now();
     try {
         const settings = await loadSettings();
         if (!settings.autoScanRecommendations) {
-            // Silently exit if the feature is disabled, but update the timestamp
             jobStatus.lastRecommendationScan = Date.now(); 
             return;
         }
 
-        await sendDebugMessage("الماسح الفني", "بدء", "فحص سريع للمؤشرات الفنية...");
+        // We don't send a debug message at the start anymore to reduce spam.
+        // The health check will monitor if this job is running.
         const prices = await getCachedMarketPrices();
         if (!prices || prices.error) throw new Error("فشل جلب بيانات السوق للماسح الفني");
 
         const marketData = Object.entries(prices)
             .filter(([instId, d]) => d.volCcy24h > 150000 && !instId.startsWith('USDC') && !instId.startsWith('BTC') && !instId.startsWith('ETH'))
             .sort(([, a], [, b]) => b.volCcy24h - a.volCcy24h)
-            .slice(0, 75); // Scan top 75 coins every minute
+            .slice(0, 75);
 
         const scannerState = await loadScannerState();
-        let triggeredCoins = new Set();
-
+        
         for (const [instId] of marketData) {
             const candles = await getHistoricalCandles(instId, '15m', 100);
             if (candles.length < 50) continue;
@@ -907,87 +959,37 @@ async function scanForSetups() {
             const closes = candles.map(c => c.close);
             const rsi = technicalIndicators.RSI.calculate({ values: closes, period: 14 });
             const macd = technicalIndicators.MACD.calculate({
-                values: closes,
-                fastPeriod: 12,
-                slowPeriod: 26,
-                signalPeriod: 9,
-                SimpleMAOscillator: false,
-                SimpleMASignal: false
+                values: closes, fastPeriod: 12, slowPeriod: 26, signalPeriod: 9, SimpleMAOscillator: false, SimpleMASignal: false
             });
 
             const lastRsi = rsi[rsi.length - 1];
             const prevRsi = rsi[rsi.length - 2];
             const lastMacd = macd[macd.length - 1];
             const prevMacd = macd[macd.length - 2];
-
             const lastState = scannerState[instId] || {};
             let triggerReason = null;
 
-            // RSI Bullish Crossover
             if (prevRsi < 50 && lastRsi >= 50 && lastState.rsi !== 'cross_50_up') {
                 triggerReason = 'RSI crossover 50 up';
                 scannerState[instId] = { ...lastState, rsi: 'cross_50_up', triggeredAt: Date.now() };
             }
-            // MACD Bullish Crossover
             else if (prevMacd && prevMacd.MACD < prevMacd.signal && lastMacd.MACD >= lastMacd.signal && lastState.macd !== 'bull_cross') {
                 triggerReason = 'MACD bullish crossover';
                  scannerState[instId] = { ...lastState, macd: 'bull_cross', triggeredAt: Date.now() };
             }
             
-            // Reset state if condition is no longer met or if it's old
             if (lastRsi < 50 && lastState.rsi === 'cross_50_up') lastState.rsi = null;
             if (lastMacd.MACD < lastMacd.signal && lastState.macd === 'bull_cross') lastState.macd = null;
-            if (lastState.triggeredAt && (Date.now() - lastState.triggeredAt > 4 * 60 * 60 * 1000)) { // Expire after 4 hours
+            if (lastState.triggeredAt && (Date.now() - lastState.triggeredAt > 4 * 60 * 60 * 1000)) {
                  delete scannerState[instId];
             }
 
-
             if (triggerReason) {
-                triggeredCoins.add(instId);
-                await sendDebugMessage("الماسح الفني", "اكتشاف فرصة", `العملة: ${instId}, السبب: ${triggerReason}`);
+                pendingAnalysisQueue.add(instId); // Add to queue instead of immediate call
+                await sendDebugMessage("الماسح الفني", "اكتشاف فرصة", `العملة: ${instId}, السبب: ${triggerReason}. تمت الإضافة إلى قائمة الانتظار.`);
             }
         }
-
         await saveScannerState(scannerState);
-        
-        if (triggeredCoins.size > 0) {
-            await sendDebugMessage("الماسح الفني", "نجاح", `تم العثور على ${triggeredCoins.size} فرصة محتملة. جاري إرسالها للتحليل العميق...`);
-            const recommendationsText = await getAIScalpingRecommendations(Array.from(triggeredCoins));
-            
-             if (recommendationsText && !recommendationsText.startsWith('❌') && !recommendationsText.startsWith('ℹ️') && !recommendationsText.includes("لا توجد فرص")) {
-                const parsedRecs = parseRecommendationsFromText(recommendationsText);
-                let createdCount = 0;
-                if (parsedRecs.length > 0) {
-                    for (const rec of parsedRecs) {
-                         if (rec.type && rec.type.includes('شراء')) {
-                            const getAvgEntryPrice = (entryStr) => {
-                                const parts = entryStr.split('-').map(p => parseFloat(p.trim()));
-                                if (parts.length > 1 && !isNaN(parts[0]) && !isNaN(parts[1])) return (parts[0] + parts[1]) / 2;
-                                return parseFloat(entryStr);
-                            };
-                            const entryPrice = getAvgEntryPrice(rec.entryPriceStr);
-                            const targetPrice = parseFloat(rec.targetPriceStr);
-                            const stopLossPrice = parseFloat(rec.stopLossPriceStr);
-
-                            if ([entryPrice, targetPrice, stopLossPrice].every(p => !isNaN(p))) {
-                                await saveVirtualTrade({ instId: rec.instId, entryPrice, targetPrice, stopLossPrice, virtualAmount: 100, status: 'active', createdAt: new Date() });
-                                createdCount++;
-                            }
-                        }
-                    }
-                    if (createdCount > 0) {
-                        await bot.api.sendMessage(AUTHORIZED_USER_ID, `✅ تم تحليل السوق وإنشاء *${createdCount}* توصية افتراضية جديدة تلقائيًا للمتابعة\\.`, { parse_mode: "MarkdownV2"});
-                    }
-                }
-                const sanitizedMessage = sanitizeMarkdownV2(recommendationsText);
-                await bot.api.sendMessage(AUTHORIZED_USER_ID, `*🧠 توصيات فنية \\(تم رصدها الآن\\)*\n\n${sanitizedMessage}`, { parse_mode: "MarkdownV2" });
-            } else {
-                 await sendDebugMessage("الماسح الفني", "معلومات", `الذكاء الاصطناعي لم يؤكد الفرص المرصودة.`);
-            }
-        } else {
-             await sendDebugMessage("الماسح الفني", "نجاح", "اكتمل الفحص الدوري، لا توجد إشارات جديدة حاليًا.");
-        }
-
     } catch (e) {
         console.error("CRITICAL ERROR in scanForSetups:", e);
         await sendDebugMessage("الماسح الفني", "فشل", e.message);
@@ -2064,7 +2066,8 @@ async function runSystemHealthCheck() {
             lastVirtualTradeCheck: { name: "متابعة التوصيات الافتراضية", interval: 30 * 1000 },
             lastPositionTrack: { name: "متابعة القمم/القيعان للمراكز", interval: 60 * 1000 },
             lastPriceAlertCheck: { name: "فحص تنبيهات السعر", interval: 30 * 1000 },
-            lastTechPatternCheck: { name: "فحص الأنماط الفنية", interval: 60 * 60 * 1000 }
+            lastTechPatternCheck: { name: "فحص الأنماط الفنية", interval: 60 * 60 * 1000 },
+            lastQueueProcess: { name: "معالجة طلبات التحليل", interval: 10 * 60 * 1000 }
         };
 
         for (const [jobKey, jobInfo] of Object.entries(jobIntervals)) {
@@ -2173,6 +2176,7 @@ async function startBot() {
         setInterval(monitorVirtualTrades, 30 * 1000);
         setInterval(runHourlyJobs, 60 * 60 * 1000);
         setInterval(scanForSetups, 60 * 1000); // New real-time scanner
+        setInterval(processAnalysisQueue, 10 * 60 * 1000); // NEW: Process queue every 10 mins
         setInterval(runDailyJobs, 24 * 60 * 60 * 1000);
         setInterval(runDailyReportJob, 24 * 60 * 60 * 1000);
         setInterval(createBackup, BACKUP_INTERVAL);
@@ -2189,8 +2193,8 @@ async function startBot() {
         if(settings.debugMode) {
             toggleHealthCheck(true);
         }
-
-        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v148\\.1 \\- Scanner Toggle\\)*\n\n\\- يمكنك الآن تفعيل/تعطيل الماسح الفني الآلي من الإعدادات\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
+        
+        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v148\\.3 \\- Quota Management\\)*\n\n\\- تم تطبيق نظام تجميع الطلبات لإدارة حصة الاستخدام بكفاءة\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
 
     } catch (e) {
         console.error("FATAL: Could not start the bot.", e);
