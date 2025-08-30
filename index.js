@@ -1,5 +1,5 @@
 // =================================================================
-// Advanced Analytics Bot - v148.0 (Performance Report Fix)
+// Advanced Analytics Bot - v148.1 (Scanner Toggle)
 // =================================================================
 // --- IMPORTS ---
 const express = require("express");
@@ -42,9 +42,9 @@ let waitingState = null;
 let marketCache = { data: null, ts: 0 };
 let isProcessingBalance = false;
 let healthCheckInterval = null; 
-let balanceCheckDebounceTimer = null; // --- NEW V147.8: Debounce timer
+let balanceCheckDebounceTimer = null;
 
-// --- NEW V147.7: Job Status Tracker ---
+// --- Job Status Tracker ---
 const jobStatus = {
     lastPriceMovementCheck: 0,
     lastRecommendationScan: 0,
@@ -199,7 +199,7 @@ const getLatencyLogsForPeriod = async (hours = 24) => { try { const since = new 
 // --- Simplified Config Helpers ---
 const loadCapital = async () => (await getConfig("capital", { value: 0 })).value;
 const saveCapital = (amount) => saveConfig("capital", { value: amount });
-const loadSettings = async () => await getConfig("settings", { dailySummary: true, autoPostToChannel: false, debugMode: false, dailyReportTime: "22:00", technicalPatternAlerts: true });
+const loadSettings = async () => await getConfig("settings", { dailySummary: true, autoPostToChannel: false, debugMode: false, dailyReportTime: "22:00", technicalPatternAlerts: true, autoScanRecommendations: true });
 const saveSettings = (settings) => saveConfig("settings", settings);
 const loadPositions = async () => await getConfig("positions", {});
 const savePositions = (positions) => saveConfig("positions", positions);
@@ -881,6 +881,13 @@ ${marketDataForPrompt}`;
 async function scanForSetups() {
     jobStatus.lastRecommendationScan = Date.now();
     try {
+        const settings = await loadSettings();
+        if (!settings.autoScanRecommendations) {
+            // Silently exit if the feature is disabled, but update the timestamp
+            jobStatus.lastRecommendationScan = Date.now(); 
+            return;
+        }
+
         await sendDebugMessage("الماسح الفني", "بدء", "فحص سريع للمؤشرات الفنية...");
         const prices = await getCachedMarketPrices();
         if (!prices || prices.error) throw new Error("فشل جلب بيانات السوق للماسح الفني");
@@ -1477,8 +1484,8 @@ async function sendSettingsMenu(ctx) {
     const settingsKeyboard = new InlineKeyboard()
         .text("💰 تعيين رأس المال", "set_capital")
         .text("💼 عرض المراكز المفتوحة", "view_positions").row()
-        .text("🚨 إدارة التنبيهات", "manage_alerts_menu").row() // Centralized alerts menu
-        .text(`📰 الملخص اليومي: ${settings.dailySummary ? '✅' : '❌'}`, "toggle_summary")
+        .text("🚨 إدارة التنبيهات", "manage_alerts_menu").row() 
+        .text(`🤖 الماسح الآلي: ${settings.autoScanRecommendations ? '✅' : '❌'}`, "toggle_autoscan") // NEW
         .text(`🚀 النشر للقناة: ${settings.autoPostToChannel ? '✅' : '❌'}`, "toggle_autopost").row()
         .text(`🐞 وضع التشخيص: ${settings.debugMode ? '✅' : '❌'}`, "toggle_debug")
         .text(`⚙️ تنبيهات فنية: ${settings.technicalPatternAlerts ? '✅' : '❌'}`, "toggle_technical_alerts").row()
@@ -1881,13 +1888,14 @@ async function handleCallbackQuery(ctx, data) {
             case "set_coin_alert": waitingState = 'set_coin_alert_state'; await ctx.editMessageText("✍️ يرجى إرسال رمز العملة والنسبة\\.\n*مثال:*\n`BTC 2.5`"); break;
             case "view_positions": const positions = await loadPositions(); if (Object.keys(positions).length === 0) { await ctx.editMessageText("ℹ️ لا توجد مراكز مفتوحة\\.", { reply_markup: new InlineKeyboard().text("🔙 العودة للإعدادات", "back_to_settings") }); break; } let posMsg = "📄 *قائمة المراكز المفتوحة:*\n"; for (const symbol in positions) { const pos = positions[symbol]; posMsg += `\n\\- *${sanitizeMarkdownV2(symbol)}:* متوسط الشراء \`$${sanitizeMarkdownV2(formatSmart(pos.avgBuyPrice))}\``; } await ctx.editMessageText(posMsg, { parse_mode: "MarkdownV2", reply_markup: new InlineKeyboard().text("🔙 العودة للإعدادات", "back_to_settings") }); break;
             
-            case "toggle_summary": case "toggle_autopost": case "toggle_debug": case "toggle_technical_alerts":
+            case "toggle_summary": case "toggle_autopost": case "toggle_debug": case "toggle_technical_alerts": case "toggle_autoscan":
                 const settings = await loadSettings();
                 const settingMap = {
                     'toggle_summary': 'dailySummary',
                     'toggle_autopost': 'autoPostToChannel',
                     'toggle_debug': 'debugMode',
-                    'toggle_technical_alerts': 'technicalPatternAlerts'
+                    'toggle_technical_alerts': 'technicalPatternAlerts',
+                    'toggle_autoscan': 'autoScanRecommendations'
                 };
                 const settingKey = settingMap[data];
                 if (settingKey) {
@@ -2184,7 +2192,7 @@ async function startBot() {
             toggleHealthCheck(true);
         }
 
-        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v147\\.7 \\- Real\\-time & Diagnostics\\)*\n\n\\- تم تفعيل الماسح الفني اللحظي للتوصيات\\.\n\\- تم تحسين نظام التشخيص ليكون أكثر دقة ووضوحًا \\(باللغة العربية\\)\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
+        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v148\\.0 \\- Hotfix\\)*\n\n\\- تم إصلاح خطأ في تقرير أداء المحفظة وتحسينات عامة\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
 
     } catch (e) {
         console.error("FATAL: Could not start the bot.", e);
@@ -2267,3 +2275,4 @@ function connectToOKXSocket() {
 
 
 startBot();
+
