@@ -1,5 +1,5 @@
 // =================================================================
-// Advanced Analytics Bot - v147.7 (Real-time & Diagnostics)
+// Advanced Analytics Bot - v147.8 (AI Prompt & Debounce Fix)
 // =================================================================
 // --- IMPORTS ---
 const express = require("express");
@@ -41,7 +41,8 @@ const bot = new Bot(BOT_TOKEN);
 let waitingState = null;
 let marketCache = { data: null, ts: 0 };
 let isProcessingBalance = false;
-let healthCheckInterval = null; // To hold the interval for the health check
+let healthCheckInterval = null; 
+let balanceCheckDebounceTimer = null; // --- NEW V147.8: Debounce timer
 
 // --- NEW V147.7: Job Status Tracker ---
 const jobStatus = {
@@ -767,12 +768,15 @@ function parseRecommendationsFromText(text) {
     }
 }
 
+// --- MODIFIED V147.8: Enhanced AI Prompt ---
 async function getAIScalpingRecommendations(focusedCoins = []) {
     let marketDataForPrompt;
     let analysisHeader = "بناءً على مسح لأفضل 200 عملة تداولاً";
+    let analysisContext = "general_scan";
 
     if (focusedCoins.length > 0) {
-        analysisHeader = `بناءً على رصد إشارات فنية على العملات التالية: ${focusedCoins.join(', ')}`;
+        analysisContext = "triggered_scan";
+        analysisHeader = `بناءً على رصد إشارات فنية أولية على العملات التالية: ${focusedCoins.join(', ')}`;
         const prices = await getCachedMarketPrices();
         if (!prices || prices.error) return "❌ فشل جلب بيانات السوق لإعداد التوصيات.";
         
@@ -782,7 +786,7 @@ async function getAIScalpingRecommendations(focusedCoins = []) {
             return `Symbol: ${instId}, Price: ${data.price}, 24h_Change: ${(data.change24h * 100).toFixed(2)}%, 24h_Volume_USDT: ${data.volCcy24h.toFixed(0)}`;
         }).join('\n');
 
-    } else {
+    } else { // Fallback for manual request
         const prices = await getCachedMarketPrices();
         if (!prices || prices.error) return "❌ فشل جلب بيانات السوق لإعداد التوصيات.";
 
@@ -807,7 +811,12 @@ async function getAIScalpingRecommendations(focusedCoins = []) {
         ).join('\n');
     }
 
-    const userPrompt = `تقمّص دور محلل فني محترف متخصص في السكالبينغ والتداول اليومي في سوق العملات الرقمية. مهمتك:
+    // This preamble is crucial to prevent the AI from hallucinating about data access.
+    const preamble = `أنت بوت تحليل فني متقدم. مصدرك الوحيد للمعلومات هو بيانات السوق اللحظية المُقدمة لك أدناه. لا تذكر أبدًا أنك لا تستطيع الوصول إلى البيانات أو أنك نموذج لغوي. مهمتك هي تحليل البيانات المقدمة فقط وإنشاء توصيات تداول حقيقية وقابلة للتنفيذ بناءً عليها.`;
+
+    const userPrompt = `${preamble}
+
+**المهمة:**
 1) ${analysisHeader} (باستثناء BTC و ETH)، قم بترشيح 3–4 عملات فقط ذات فرصة تداول واضحة (شراء أو بيع) وفق تلاقي إشارات فنية قوية على أُطر 4H و1H، مع نظرة يومية لتحديد الاتجاه العام.
 2) لكل عملة مرشحة، أنشئ توصية منفصلة بالصيغة أدناه بدقة، واملأ كل الحقول بقيم عددية محددة (لا تترك نطاقات مفتوحة إلا في “منطقة دخول” مع ذكر متوسط مرجعي لحساب النِسب):
 - العملة: [اسم العملة والرمز]
@@ -820,54 +829,11 @@ async function getAIScalpingRecommendations(focusedCoins = []) {
 - ملخص التحليل: [سطران كحد أقصى يذكران: الاتجاه العام على Daily، سبب الفرصة على 4H/1H (اختراق/كسر، عودة اختبار، دايفرجنس RSI، تقاطع MACD، تموضع السعر مقابل EMA21/50 وSMA100، نطاقات بولنجر، مناطق عرض/طلب، مستويات فيبوناتشي، تزايد حجم أو تأكيد حجمي)]
 - إخلاء مسؤولية: أدرك تماماً أن هذه التوصيات هي نتاج تحليل فني واحتمالات وقد لا تكون دقيقة، وهي ليست نصيحة مالية. تداول العملات الرقمية ينطوي على مخاطر عالية جداً وقد يؤدي إلى خسارة كامل رأس المال.
 
-قواعد حساب النِسب المئوية
-- إذا كان الدخول نطاقاً A–B، احسب المتوسط المرجعي M = (A + B) ÷ 2.
-- النسبة المئوية للهدف i = ((Target_i − M) ÷ M) × 100 مع علامة + للشراء و+ أيضاً إن كان الهدف أعلى M في البيع المعكوس، بينما إن كان أقرب للمنطق ضع الإشارة بحسب اتجاه الصفقة:
-  - صفقات الشراء: النِسب موجبة للأهداف، سالبة لوقف الخسارة.
-  - صفقات البيع: النِسب سالبة للأهداف (لأن السعر أدنى M)، وموجبة لوقف الخسارة.
-- إن كان الدخول سعراً واحداً، استخدمه مباشرة كأساس للنسبة.
-- اكتب النِسب بدقة عشرية واحدة أو اثنتين كحد أقصى.
+**قواعد صارمة:**
+- يجب أن تكون جميع القيم رقمية ومبنية حصراً على البيانات المتوفرة.
+- لا تقدم أي أمثلة افتراضية. إذا لم تجد فرصة حقيقية، أجب بـ "لا توجد فرص تداول واضحة حاليًا."
 
-معايير المسح والفلترة
-- استبعد العملات المستقرة والمشاريع ذات السيولة غير العضوية الظاهرة.
-- فضّل العملات ذات:
-  - سيولة مرتفعة وتزايد حجم مقابل الحركة.
-  - بنية سوقية واضحة: قمم/قيعان متصاعدة أو هابطة، أو نطاق متماسك قريب من كسر.
-  - تلاقي مؤشرات:
-    - تموضع السعر فوق/تحت EMA21 وEMA50 وSMA100 بطريقة منسجمة مع الاتجاه.
-    - RSI: كسر مستوى 50، أو دايفرجنس إيجابي/سلبي واضح.
-    - MACD: تقاطع مع اتساع هيستوجرام في اتجاه الصفقة.
-    - بولنجر: اتساع نطاق أو خروج مدعوم بحجم.
-    - فيبوناتشي: أهداف عند 38.2%/50%/61.8% من آخر موجة.
-    - حجم/Volume Profile: مناطق عقد سعري مرجعية وتأكيد اختراق/كسر بالحجم.
-
-قواعد إنتاج التوصية
-- حدد: اتجاه Daily موجزاً، ثم قرار 4H/1H (اختراق/كسر/إعادة اختبار/ارتداد من طلب/عرض) بما يدعم القرار.
-- ضع منطقة دخول دقيقة وقابلة للتنفيذ، واذكر المتوسط المرجعي لحساب النِسب.
-- حدد 3 أهداف تصاعدية للشراء أو تنازلية للبيع بشكل منطقي مع بنية السوق/فيبوناتشي/مقاومات/دعوم.
-- ضع وقف خسارة منطقياً أسفل/أعلى منطقة الطلب/العرض أو أسفل/أعلى قاع/قمة كسرية حديثة.
-- احسب وأظهر النِسب المئوية لكل هدف ووقف الخسارة كما في القواعد أعلاه.
-- اجعل “ملخص التحليل” لا يتجاوز سطرين مكثفين.
-- لا تتجاوز 4 توصيات نهائية.
-
-شكل الإخراج النهائي
-قدّم فقط التوصيات بصيغة القوائم التالية لكل عملة، دون مقدمات أو شروحات إضافية:
-[كرّر البلوك التالي 3–4 مرات كحد أقصى]
-- العملة: [..]
-- نوع التوصية: [..]
-- سعر الدخول (Entry Price): [..] (المتوسط المرجعي: [M])
-- الهدف الأول (Target 1): [السعر] ([±X.X]%)
-- الهدف الثاني (Target 2): [السعر] ([±X.X]%)
-- الهدف الثالث (Target 3): [السعر] ([±X.X]%)
-- وقف الخسارة (Stop Loss): [السعر] ([±X.X]%)
-- ملخص التحليل: [سطران كحد أقصى]
-- إخلاء مسؤولية: أدرك تماماً أن هذه التوصيات هي نتاج تحليل فني واحتمالات وقد لا تكون دقيقة، وهي ليست نصيحة مالية. تداول العملات الرقمية ينطوي على مخاطر عالية جداً وقد يؤدي إلى خسارة كامل رأس المال.
-
-ملاحظات تنفيذية
-- التزم بنسبة مخاطرة لا تتجاوز 2–3% لكل صفقة، ويمكن تحريك وقف الخسارة إلى نقطة الدخول بعد تحقق الهدف 1.
-- حدّث المدخلات (الأسعار/الأطر) كل 4–6 ساعات لتوافق طبيعة السوق المتقلبة.
-
-بيانات السوق الحالية للتحليل:
+**بيانات السوق الحالية للتحليل:**
 ${marketDataForPrompt}`;
 
     const analysis = await analyzeWithAI(userPrompt, true);
@@ -920,17 +886,20 @@ async function scanForSetups() {
             // RSI Bullish Crossover
             if (prevRsi < 50 && lastRsi >= 50 && lastState.rsi !== 'cross_50_up') {
                 triggerReason = 'RSI crossover 50 up';
-                scannerState[instId] = { ...lastState, rsi: 'cross_50_up' };
+                scannerState[instId] = { ...lastState, rsi: 'cross_50_up', triggeredAt: Date.now() };
             }
             // MACD Bullish Crossover
             else if (prevMacd && prevMacd.MACD < prevMacd.signal && lastMacd.MACD >= lastMacd.signal && lastState.macd !== 'bull_cross') {
                 triggerReason = 'MACD bullish crossover';
-                 scannerState[instId] = { ...lastState, macd: 'bull_cross' };
+                 scannerState[instId] = { ...lastState, macd: 'bull_cross', triggeredAt: Date.now() };
             }
             
-            // Reset state if condition is no longer met
+            // Reset state if condition is no longer met or if it's old
             if (lastRsi < 50 && lastState.rsi === 'cross_50_up') lastState.rsi = null;
             if (lastMacd.MACD < lastMacd.signal && lastState.macd === 'bull_cross') lastState.macd = null;
+            if (lastState.triggeredAt && (Date.now() - lastState.triggeredAt > 4 * 60 * 60 * 1000)) { // Expire after 4 hours
+                 delete scannerState[instId];
+            }
 
 
             if (triggerReason) {
@@ -944,8 +913,8 @@ async function scanForSetups() {
         if (triggeredCoins.size > 0) {
             await sendDebugMessage("الماسح الفني", "نجاح", `تم العثور على ${triggeredCoins.size} فرصة محتملة. جاري إرسالها للتحليل العميق...`);
             const recommendationsText = await getAIScalpingRecommendations(Array.from(triggeredCoins));
-            // The rest of the logic (parsing, sending, creating virtual trades) will be handled here
-             if (recommendationsText && !recommendationsText.startsWith('❌') && !recommendationsText.startsWith('ℹ️')) {
+            
+             if (recommendationsText && !recommendationsText.startsWith('❌') && !recommendationsText.startsWith('ℹ️') && !recommendationsText.includes("لا توجد فرص")) {
                 const parsedRecs = parseRecommendationsFromText(recommendationsText);
                 let createdCount = 0;
                 if (parsedRecs.length > 0) {
@@ -972,6 +941,8 @@ async function scanForSetups() {
                 }
                 const sanitizedMessage = sanitizeMarkdownV2(recommendationsText);
                 await bot.api.sendMessage(AUTHORIZED_USER_ID, `*🧠 توصيات فنية \\(تم رصدها الآن\\)*\n\n${sanitizedMessage}`, { parse_mode: "MarkdownV2" });
+            } else {
+                 await sendDebugMessage("الماسح الفني", "معلومات", `الذكاء الاصطناعي لم يؤكد الفرص المرصودة.`);
             }
         } else {
              await sendDebugMessage("الماسح الفني", "نجاح", "اكتمل الفحص الدوري، لا توجد إشارات جديدة حاليًا.");
@@ -1144,7 +1115,8 @@ async function updatePositionAndAnalyze(asset, amountChange, price, newTotalAmou
 
 async function monitorBalanceChanges() {
     if (isProcessingBalance) {
-        await sendDebugMessage("مراقبة الرصيد", "تخطي", "العملية السابقة لم تنته بعد.");
+        // This log is now less important due to debouncing but kept for safety.
+        // await sendDebugMessage("مراقبة الرصيد", "تخطي", "العملية السابقة لم تنته بعد.");
         return;
     }
     isProcessingBalance = true;
@@ -2204,7 +2176,6 @@ function connectToOKXSocket() {
     });
 
     ws.on('message', async (data) => {
-        const signalTime = Date.now();
         const rawData = data.toString();
 
         if (rawData === 'pong') {
@@ -2225,8 +2196,11 @@ function connectToOKXSocket() {
             }
 
             if (message.arg?.channel === 'account' && message.data) {
-                console.log("Real-time balance update received via WebSocket.");
-                await monitorBalanceChanges(signalTime);
+                // --- MODIFIED V147.8: Debounce balance check ---
+                clearTimeout(balanceCheckDebounceTimer);
+                balanceCheckDebounceTimer = setTimeout(() => {
+                    monitorBalanceChanges();
+                }, 5000); // Debounce for 5 seconds
             }
 
         } catch (error) {
