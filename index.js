@@ -1,5 +1,5 @@
 // =================================================================
-// Advanced Analytics Bot - v147.9 (Full Diagnostics)
+// Advanced Analytics Bot - v148.0 (Performance Report Fix)
 // =================================================================
 // --- IMPORTS ---
 const express = require("express");
@@ -578,6 +578,41 @@ async function formatAdvancedMarketAnalysis(ownedAssets = []) {
     return msg;
 }
 async function formatQuickStats(assets, total, capital) { const pnl = capital > 0 ? total - capital : 0; const pnlPercent = capital > 0 ? (pnl / capital) * 100 : 0; const statusEmoji = pnl >= 0 ? '🟢' : '🔴'; const statusText = pnl >= 0 ? 'ربح' : 'خسارة'; let msg = "⚡ *إحصائيات سريعة*\n\n"; msg += `💎 *إجمالي الأصول:* \`${assets.filter(a => a.asset !== 'USDT').length}\`\n`; msg += `💰 *القيمة الحالية:* \`$${sanitizeMarkdownV2(formatNumber(total))}\`\n`; if (capital > 0) { msg += `📈 *نسبة الربح/الخسارة:* \`${sanitizeMarkdownV2(formatNumber(pnlPercent))}%\`\n`; msg += `🎯 *الحالة:* ${statusEmoji} ${statusText}\n`; } msg += `\n━━━━━━━━━━━━━━━━━━━━\n*تحليل القمم والقيعان للأصول:*\n`; const cryptoAssets = assets.filter(a => a.asset !== "USDT"); if (cryptoAssets.length === 0) { msg += "\n`لا توجد أصول في محفظتك لتحليلها\\.`"; } else { const assetExtremesPromises = cryptoAssets.map(asset => getAssetPriceExtremes(`${asset.asset}-USDT`) ); const assetExtremesResults = await Promise.all(assetExtremesPromises); cryptoAssets.forEach((asset, index) => { const extremes = assetExtremesResults[index]; msg += `\n🔸 *${sanitizeMarkdownV2(asset.asset)}:*\n`; if (extremes) { msg += ` *الأسبوعي:* قمة \`$${sanitizeMarkdownV2(formatSmart(extremes.weekly.high))}\` / قاع \`$${sanitizeMarkdownV2(formatSmart(extremes.weekly.low))}\`\n`; msg += ` *الشهري:* قمة \`$${sanitizeMarkdownV2(formatSmart(extremes.monthly.high))}\` / قاع \`$${sanitizeMarkdownV2(formatSmart(extremes.monthly.low))}\`\n`; msg += ` *السنوي:* قمة \`$${sanitizeMarkdownV2(formatSmart(extremes.yearly.high))}\` / قاع \`$${sanitizeMarkdownV2(formatSmart(extremes.yearly.low))}\`\n`; msg += ` *التاريخي:* قمة \`$${sanitizeMarkdownV2(formatSmart(extremes.allTime.high))}\` / قاع \`$${sanitizeMarkdownV2(formatSmart(extremes.allTime.low))}\``; } else { msg += ` \`تعذر جلب البيانات التاريخية\\.\``; } }); } msg += `\n\n⏰ *آخر تحديث:* ${sanitizeMarkdownV2(new Date().toLocaleString("ar-EG", { timeZone: "Africa/Cairo" }))}`; return msg; }
+async function formatPerformanceReport(period, periodLabel, history, btcHistory) {
+    const stats = calculatePerformanceStats(history);
+    if (!stats) return { error: "ℹ️ لا توجد بيانات كافية لهذه الفترة\\." };
+    let btcPerformanceText = " `لا تتوفر بيانات`";
+    let benchmarkComparison = "";
+    if (btcHistory && btcHistory.length >= 2) {
+        const btcStart = btcHistory[0].close;
+        const btcEnd = btcHistory[btcHistory.length - 1].close;
+        const btcChange = (btcEnd - btcStart) / btcStart * 100;
+        btcPerformanceText = `\`${sanitizeMarkdownV2(btcChange >= 0 ? '+' : '')}${sanitizeMarkdownV2(formatNumber(btcChange))}%\``;
+        if (stats.pnlPercent > btcChange) {
+            benchmarkComparison = `▪️ *النتيجة:* أداء أعلى من السوق ✅`;
+        } else {
+            benchmarkComparison = `▪️ *النتيجة:* أداء أقل من السوق ⚠️`;
+        }
+    }
+    const chartLabels = history.map(h => period === '24h' ? new Date(h.time).getHours() + ':00' : new Date(h.time).toLocaleDateString('en-GB', {day: '2-digit', month: '2-digit'}));
+    const chartDataPoints = history.map(h => h.total);
+    const chartUrl = createChartUrl(chartDataPoints, 'line', `أداء المحفظة - ${periodLabel}`, chartLabels, 'قيمة المحفظة ($)');
+    const pnlSign = stats.pnl >= 0 ? '+' : '';
+    const emoji = stats.pnl >= 0 ? '🟢⬆️' : '🔴⬇️';
+    let caption = `📊 *تحليل أداء المحفظة \\| ${sanitizeMarkdownV2(periodLabel)}*\n\n`;
+    caption += `📈 *النتيجة:* ${emoji} \`$${sanitizeMarkdownV2(pnlSign)}${sanitizeMarkdownV2(formatNumber(stats.pnl))}\` \\(\`${sanitizeMarkdownV2(pnlSign)}${sanitizeMarkdownV2(formatNumber(stats.pnlPercent))}%\`\\)\n`;
+    caption += `*التغير الصافي: من \`$${sanitizeMarkdownV2(formatNumber(stats.startValue))}\` إلى \`$${sanitizeMarkdownV2(formatNumber(stats.endValue))}\`*\n\n`;
+    caption += `*📝 مقارنة معيارية \\(Benchmark\\):*\n`;
+    caption += `▪️ *أداء محفظتك:* \`${sanitizeMarkdownV2(stats.pnlPercent >= 0 ? '+' : '')}${sanitizeMarkdownV2(formatNumber(stats.pnlPercent))}%\`\n`;
+    caption += `▪️ *أداء عملة BTC:* ${btcPerformanceText}\n`;
+    caption += `${benchmarkComparison}\n\n`;
+    caption += `*📈 مؤشرات الأداء الرئيسية:*\n`;
+    caption += `▪️ *أفضل يوم:* \`+${sanitizeMarkdownV2(formatNumber(stats.bestDayChange))}%\`\n`;
+    caption += `▪️ *أسوأ يوم:* \`${sanitizeMarkdownV2(formatNumber(stats.worstDayChange))}%\`\n`;
+    caption += `▪️ *مستوى التقلب:* ${sanitizeMarkdownV2(stats.volText)}`;
+    return { caption, chartUrl };
+}
+
 function formatMarketContextCard(context) {
     if (!context || context.error) return "";
     const { trend, trendEmoji, volume, volumeEmoji, conclusion } = context;
