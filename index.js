@@ -1,5 +1,5 @@
 // =================================================================
-// Advanced Analytics Bot - v148.4 (Startup Validation)
+// Advanced Analytics Bot - v148.5 (Ranking Engine)
 // =================================================================
 // --- IMPORTS ---
 const express = require("express");
@@ -43,7 +43,7 @@ let marketCache = { data: null, ts: 0 };
 let isProcessingBalance = false;
 let healthCheckInterval = null; 
 let balanceCheckDebounceTimer = null;
-let pendingAnalysisQueue = new Set(); // --- NEW V148.3: For batching AI requests
+let pendingAnalysisQueue = new Set(); 
 
 // --- Job Status Tracker ---
 const jobStatus = {
@@ -53,7 +53,7 @@ const jobStatus = {
     lastPositionTrack: 0,
     lastPriceAlertCheck: 0,
     lastTechPatternCheck: 0,
-    lastQueueProcess: 0 // --- NEW V148.3
+    lastQueueProcess: 0
 };
 
 // --- AI Setup ---
