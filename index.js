@@ -1,5 +1,5 @@
 // =================================================================
-// Advanced Analytics Bot - v148.3 (Quota Management)
+// Advanced Analytics Bot - v148.4 (Startup Validation)
 // =================================================================
 // --- IMPORTS ---
 const express = require("express");
@@ -57,8 +57,12 @@ const jobStatus = {
 };
 
 // --- AI Setup ---
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+let genAI;
+let geminiModel;
+if (GEMINI_API_KEY) {
+    genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+    geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+}
 
 // =================================================================
 // SECTION 1: OKX API ADAPTER & CACHING
@@ -2146,6 +2150,22 @@ async function generateUnifiedDailyReport() {
 
 
 async function startBot() {
+    // --- NEW v148.4: Startup validation ---
+    const requiredEnv = ['TELEGRAM_BOT_TOKEN', 'GEMINI_API_KEY', 'OKX_API_KEY', 'OKX_API_SECRET_KEY', 'OKX_API_PASSPHRASE', 'AUTHORIZED_USER_ID', 'MONGO_URI'];
+    const missingEnv = requiredEnv.filter(e => !process.env[e]);
+    if(missingEnv.length > 0) {
+        const errorMsg = `FATAL: Missing required environment variables: ${missingEnv.join(', ')}`;
+        console.error(errorMsg);
+        // Try to notify the user before exiting
+        if(BOT_TOKEN && AUTHORIZED_USER_ID) {
+            const tempBot = new Bot(BOT_TOKEN);
+            const userErrorMsg = `❌ *فشل تشغيل البوت* ‼️\n\nمتغيرات البيئة التالية مفقودة:\n\`${missingEnv.join('\n')}\`\n\nيرجى التأكد من تعيينها بشكل صحيح في لوحة تحكم منصة الاستضافة\\.`;
+            tempBot.api.sendMessage(AUTHORIZED_USER_ID, userErrorMsg, {parse_mode: "MarkdownV2"}).catch(e => console.error("Could not send startup error message to user:", e));
+        }
+        process.exit(1);
+    }
+
+
     if (process.env.NODE_ENV === "production") {
         console.log("Starting server for health checks...");
         app.use(express.json());
@@ -2194,7 +2214,7 @@ async function startBot() {
             toggleHealthCheck(true);
         }
         
-        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v148\\.3 \\- Quota Management\\)*\n\n\\- تم تطبيق نظام تجميع الطلبات لإدارة حصة الاستخدام بكفاءة\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
+        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم إعادة تشغيل البوت بنجاح \\(v148\\.4 \\- Startup Validation\\)*\n\n\\- تم إضافة نظام فحص عند بدء التشغيل للتأكد من وجود مفاتيح API\\.", { parse_mode: "MarkdownV2" }).catch(console.error);
 
     } catch (e) {
         console.error("FATAL: Could not start the bot.", e);
