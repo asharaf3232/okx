@@ -810,7 +810,7 @@ function parseRecommendationsFromText(text) {
     }
 }
 
-// --- MODIFIED V148.2: More Flexible and Strict AI Prompt ---
+// --- MODIFIED: More Flexible AI Prompt (2+ indicators) ---
 async function getAIScalpingRecommendations(focusedCoins = []) {
     let marketDataForPrompt;
     let analysisHeader = "بناءً على مسح لأفضل 200 عملة تداولاً";
@@ -856,7 +856,7 @@ async function getAIScalpingRecommendations(focusedCoins = []) {
     const userPrompt = `${preamble}
 
 **المهمة:**
-1) ${analysisHeader} (باستثناء BTC و ETH)، قم بترشيح 3–4 عملات لديها **أقوى تراكم للإشارات الإيجابية**. ليس من الضروري تواجد كل المؤشرات، لكن الأفضلية للفرص التي يظهر فيها **ثلاثة مؤشرات قوية متوافقة على الأقل** (مثال: اتجاه عام واضح + اختراق مستوى سعري مهم + تأكيد من مؤشر زخم مثل RSI أو MACD).
+1) ${analysisHeader} (باستثناء BTC و ETH)، قم بترشيح 3–4 عملات لديها **أقوى تراكم للإشارات الإيجابية**. ليس من الضروري تواجد كل المؤشرات، لكن الأفضلية للفرص التي يظهر فيها **مؤشران قويان متوافقان على الأقل** (مثال: اتجاه عام واضح + اختراق مستوى سعري مهم).
 2) لكل عملة مرشحة، أنشئ توصية منفصلة بالصيغة أدناه بدقة، واملأ كل الحقول بقيم عددية محددة:
 - العملة: [اسم العملة والرمز]
 - نوع التوصية: (شراء / بيع)
@@ -870,7 +870,7 @@ async function getAIScalpingRecommendations(focusedCoins = []) {
 
 **قواعد صارمة:**
 - يجب أن تكون جميع القيم رقمية ومبنية حصراً على البيانات المتوفرة.
-- لا تقدم أي أمثلة افتراضية. إذا لم تجد فرصة حقيقية تتوافق مع معيار "3 مؤشرات متوافقة على الأقل"، أجب بـ "لا توجد فرص تداول واضحة حاليًا."
+- لا تقدم أي أمثلة افتراضية. إذا لم تجد فرصة حقيقية تتوافق مع معيار "مؤشران متوافقان على الأقل"، أجب بـ "لا توجد فرص تداول واضحة حاليًا."
 
 **بيانات السوق الحالية للتحليل:**
 ${marketDataForPrompt}`;
@@ -878,6 +878,7 @@ ${marketDataForPrompt}`;
     const analysis = await analyzeWithAI(userPrompt, true);
     return analysis;
 }
+
 
 // =================================================================
 // SECTION 5: BACKGROUND JOBS & DYNAMIC MANAGEMENT
