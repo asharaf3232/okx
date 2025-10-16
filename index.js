@@ -401,120 +401,116 @@ function formatPrivateCloseReport(details) {
     msg += `━━━━━━━━━━━━━━━━━━━━\n*بتاريخ الإغلاق:* ${sanitizeMarkdownV2(new Date().toLocaleString("ar-EG", { timeZone: "Africa/Cairo" }))}`;
     return msg;
 }
+// =================================================================
+// SECTION 3: FORMATTING AND MESSAGE FUNCTIONS (Public Channel Part)
+// =================================================================
+
+/**
+ * NEW TEMPLATE V148.5
+ * Formats the ANONYMOUS message for a new buy/position entry for the public channel.
+ * Focuses on risk management metrics and introduces a journey ID.
+ * @param {object} details - The trade details object.
+ * @returns {string} The formatted MarkdownV2 message.
+ */
 function formatPublicBuy(details) {
-    // استخلاص البيانات المطلوبة من تفاصيل الصفقة
-    const { oldTotalValue, tradeValue, oldUsdtValue, newCashPercent } = details;
+    const { journeyId, tradeValue, oldTotalValue, oldUsdtValue, newCashPercent } = details;
+
+    // Calculate risk management percentages
     const tradeSizePercent = oldTotalValue > 0 ? (tradeValue / oldTotalValue) * 100 : 0;
-    const cashConsumedPercent = (oldUsdtValue > 0) ? (tradeValue / oldUsdtValue) * 100 : 0;
+    const cashConsumptionPercent = oldUsdtValue > 0 ? (tradeValue / oldUsdtValue) * 100 : 0;
 
-    // 1. عنوان جديد ومباشر
-    let msg = `*💡 تحديث المحفظة: فتح مركز جديد 🟢*\n━━━━━━━━━━━━━━━━━━━━\n`;
+    const safeJourneyId = sanitizeMarkdownV2(journeyId || 'N/A');
 
-    // 2. تحليل التأثير على المحفظة
+    let msg = `*🎯 يوميات المحفظة: بناء مركز استراتيجي | الرحلة #${safeJourneyId}*\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `تم تخصيص جزء من رأس المال لمركز جديد في *أصل رقمي* \\(سيتم الكشف عنه لاحقاً عند تحقيق أول هدف\\)\\.\n\n`;
+    msg += `الهدف هو التركيز على **المنهجية** وليس الأصل\\.\n\n`;
     msg += `*تحليل التأثير على المحفظة:*\n`;
-    msg += ` ▪️ *حجم الصفقة:* تم تخصيص \`${sanitizeMarkdownV2(formatNumber(tradeSizePercent))}%\` من إجمالي المحفظة لهذا المركز\\.\n`;
-    msg += ` ▪️ *استهلاك السيولة:* تم استخدام \`${sanitizeMarkdownV2(formatNumber(cashConsumedPercent))}%\` من الرصيد النقدي المتاح\\.\n`;
-    msg += ` ▪️ *مؤشر السيولة الحالي:* أصبحت السيولة النقدية الآن تشكل \`${sanitizeMarkdownV2(formatNumber(newCashPercent))}%\` من المحفظة\\.\n`;
-    msg += `━━━━━━━━━━━━━━━━━━━━\n`;
-
-    // 3. رسالة الدعوة لنسخ الصفقات (مع تصحيح النقطة)
-    msg += `*هل تريد أن تكون جزءًا من استراتيجيتنا؟*\n\n`;
-    // --- السطر الذي تم تصحيحه ---
-    msg += `هذه الصفقة وغيرها من تحركاتنا القادمة يمكن أن تنعكس تلقائيًا في محفظتك\\. انضم إلى خدمة النسخ ودعنا نتداول بالنيابة عنك لتحقيق النمو معًا\\.\n\n`;
-    // -------------------------
-    msg += `🌐 **ابدأ النسخ المباشر من هنا:**\n`;
-    // ✅ --- التعديل: تم تهريب النقطة في الرابط ---
+    msg += ` ▪️ *حجم الصفقة:* تم تخصيص \`${sanitizeMarkdownV2(formatNumber(tradeSizePercent))}%\` من إجمالي المحفظة\\.\n`;
+    msg += ` ▪️ *استهلاك السيولة:* تم استخدام \`${sanitizeMarkdownV2(formatNumber(cashConsumptionPercent))}%\` من الرصيد النقدي المتاح\\.\n`;
+    msg += ` ▪️ *السيولة المتبقية:* أصبحت السيولة النقدية الآن تشكل \`${sanitizeMarkdownV2(formatNumber(newCashPercent))}%\` من المحفظة\\.\n\n`;
+    msg += `تابعوا معنا كيف ستتطور هذه الصفقة وكيف تتم إدارتها خطوة بخطوة\\.\n\n`;
+    msg += `🌐 لنسخ استراتيجيتنا تلقائياً:\n`;
     msg += `🏦 https://t\\.me/abusalamachart\n\n`;
-    // ------------------------------------
-    msg += `📢 **لمتابعة كافة التحديثات والنتائج:**\n`;
-    msg += `@abusalamachart\n`;
+    msg += `📢 @abusalamachart\n`;
     msg += `━━━━━━━━━━━━━━━━━━━━\n`;
-
-    // 4. التوقيع الآلي من البوت
-    msg += `*تحديث آلي من بوت مراقبة النسخ 🤖*`;
+    msg += `تحديث آلي من بوت مراقبة النسخ 🤖`;
 
     return msg;
 }
 
+/**
+ * NEW TEMPLATE V148.5
+ * Formats the "REVEAL" message for a partial sell for the public channel.
+ * It discloses the asset name for the first time.
+ * @param {object} details - The trade details object.
+ * @returns {string} The formatted MarkdownV2 message.
+ */
 function formatPublicSell(details) {
-    // استخلاص وتحليل بيانات الصفقة
-    const { asset, price, amountChange, position } = details;
-    const totalPositionAmountBeforeSale = position.totalAmountBought - (position.totalAmountSold - Math.abs(amountChange));
-    const soldPercent = totalPositionAmountBeforeSale > 0 ? (Math.abs(amountChange) / totalPositionAmountBeforeSale) * 100 : 0;
-    const partialPnl = (price - position.avgBuyPrice);
-    const partialPnlPercent = position.avgBuyPrice > 0 ? (partialPnl / position.avgBuyPrice) * 100 : 0;
+    const { journeyId, asset, price, amountChange, position } = details;
 
-    // 1. عنوان احترافي ومباشر
-    let msg = `*⚙️ تحديث المحفظة: جني أرباح جزئي 🟠*\n━━━━━━━━━━━━━━━━━━━━\n`;
+    // Calculate PnL on the sold part
+    const costOfPart = position.avgBuyPrice * Math.abs(amountChange);
+    const pnlOnPart = (price - position.avgBuyPrice) * Math.abs(amountChange);
+    const pnlPercentOnPart = costOfPart > 0 ? (pnlOnPart / costOfPart) * 100 : 0;
 
-    // 2. تفاصيل الإجراء المتخذ
-    msg += `*الأصل:* \`${sanitizeMarkdownV2(asset)}/USDT\`\n`;
-    msg += `*سعر البيع:* \`$${sanitizeMarkdownV2(formatSmart(price))}\`\n`;
-    msg += `━━━━━━━━━━━━━━━━━━━━\n*تحليل الإجراء:*\n`;
+    // Calculate the percentage of the position that was sold
+    const amountBeforeThisSale = position.totalAmountBought - (position.totalAmountSold - Math.abs(amountChange));
+    const soldPercent = amountBeforeThisSale > 0 ? (Math.abs(amountChange) / amountBeforeThisSale) * 100 : 0;
 
-    // ✅ --- التصحيح الشامل ---
-    msg += ` ▪️ *الإجراء:* تم بيع \`${sanitizeMarkdownV2(formatNumber(soldPercent))}%\` من المركز لتأمين الأرباح\\.\n`;
-    msg += ` ▪️ *النتيجة:* ربح محقق على الجزء المباع بنسبة \`${sanitizeMarkdownV2(formatNumber(partialPnlPercent))}%\` 🟢\\.\n`;
-    msg += ` ▪️ *حالة المركز:* لا يزال المركز مفتوحًا بالكمية المتبقية\\.\n`;
-    // ------------------------------------
+    const safeJourneyId = sanitizeMarkdownV2(journeyId || 'N/A');
+    const safeAsset = sanitizeMarkdownV2(asset);
 
+    let msg = `*⚙️ كشف الرحلة #${safeJourneyId} وتحقيق الهدف الأول 🟠*\n`;
     msg += `━━━━━━━━━━━━━━━━━━━━\n`;
-
-    // 3. رسالة الدعوة للنسخ (مع التصحيحات)
-    msg += `*الانضباط هو مفتاح النجاح في التداول\\.*\n\n`;
-    msg += `هذه الإدارة للمخاطر وتأمين الأرباح هي جزء أساسي من نهجنا\\. انضم لخدمة النسخ لتطبيق نفس الانضباط على محفظتك تلقائيًا\\.\n\n`;
-    msg += `🌐 **ابدأ النسخ المباشر من هنا:**\n`;
-
-    // ✅ --- التصحيح الشامل ---
+    msg += `هل تذكرون المركز الاستراتيجي المجهول الذي بدأناه؟\n\n`;
+    msg += `يسرنا الكشف أنه كان لعملة: **${safeAsset}**\n\n`;
+    msg += `تم اليوم جني أرباح جزئية بنجاح لتأمين العائد\\.\n\n`;
+    msg += `*تفاصيل الإجراء:*\n`;
+    msg += ` ▪️ *الأصل:* ${safeAsset}\n`;
+    msg += ` ▪️ *سعر البيع:* \`$${sanitizeMarkdownV2(formatSmart(price))}\`\n`;
+    msg += ` ▪️ *الكمية المباعة:* \`${sanitizeMarkdownV2(formatNumber(soldPercent))}%\` من إجمالي الكمية\\.\n`;
+    msg += ` ▪️ *النتيجة:* ربح مُحقق على الجزء المُباع \`+${sanitizeMarkdownV2(formatNumber(pnlPercentOnPart))}%\` 🟢\\.\n`;
+    msg += ` ▪️ *الحالة:* ما زلنا نحتفظ بالجزء المتبقي من المركز\\.\n\n`;
+    msg += `هذا هو جوهر استراتيجيتنا: الدخول المنضبط، والخروج عند تحقيق الأهداف\\.\n\n`;
+    msg += `🌐 هل تريد تطبيق نفس المنهجية على محفظتك؟\n`;
     msg += `🏦 https://t\\.me/abusalamachart\n\n`;
-    // ------------------------------------
-
-    msg += `📢 **لمتابعة كافة التحديثات والنتائج:**\n`;
-    msg += `@abusalamachart\n`;
+    msg += `📢 @abusalamachart\n`;
     msg += `━━━━━━━━━━━━━━━━━━━━\n`;
-
-    // 4. التوقيع الآلي من البوت
-    msg += `*تحديث آلي من بوت مراقبة النسخ 🤖*`;
+    msg += `تحديث آلي من بوت مراقبة النسخ 🤖`;
 
     return msg;
 }
 
+/**
+ * NEW TEMPLATE V148.5
+ * Formats the FINAL report for a closed position for the public channel.
+ * It provides a full summary of the now-known journey.
+ * @param {object} details - The closed trade report object.
+ * @returns {string} The formatted MarkdownV2 message.
+ */
 function formatPublicClose(details) {
-    // استخلاص بيانات النتيجة النهائية
-    const { asset, pnlPercent, durationDays, avgBuyPrice, avgSellPrice } = details;
+    const { journeyId, asset, avgBuyPrice, avgSellPrice, pnlPercent, durationDays } = details;
+
     const pnlSign = pnlPercent >= 0 ? '+' : '';
-    const emoji = pnlPercent >= 0 ? '🟢' : '🔴';
+    const safeJourneyId = sanitizeMarkdownV2(journeyId || 'N/A');
+    const safeAsset = sanitizeMarkdownV2(asset);
 
-    // 1. عنوان يركز على النتيجة
-    let msg = `*🏆 النتيجة النهائية للصفقة: ${sanitizeMarkdownV2(asset)} ✅*\n━━━━━━━━━━━━━━━━━━━━\n`;
-
-    // 2. ملخص الأداء والأرقام الرئيسية
+    let msg = `*🏆 النتيجة النهائية للرحلة #${safeJourneyId}: ${safeAsset} ✅*\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `من البداية المجهولة إلى النهاية الرابحة، هذه هي الحصيلة الكاملة لصفقة **${safeAsset}**\\.\n\n`;
     msg += `*ملخص أداء الصفقة:*\n`;
-    msg += ` ▪️ **متوسط سعر الدخول:** \`$${sanitizeMarkdownV2(formatSmart(avgBuyPrice))}\`\n`;
-    msg += ` ▪️ **متوسط سعر الخروج:** \`$${sanitizeMarkdownV2(formatSmart(avgSellPrice))}\`\n`;
-
-    // ✅ --- التصحيح الشامل ---
-    msg += ` ▪️ **العائد النهائي \\(ROI\\):** \`${sanitizeMarkdownV2(pnlSign)}${sanitizeMarkdownV2(formatNumber(pnlPercent))}%\` ${emoji}\n`;
-    msg += ` ▪️ **مدة الصفقة:** \`${sanitizeMarkdownV2(formatNumber(durationDays, 1))} يوم\`\n`;
-    // ------------------------------------
-
-    msg += `━━━━━━━━━━━━━━━━━━━━\n`;
-
-    // 3. رسالة الدعوة للنسخ (مع التصحيحات)
-    msg += `*النتائج تتحدث عن نفسها\\. نبارك لكل من استفاد من هذه الصفقة معنا\\.*\n\n`;
-    msg += `هل تريد أن تكون هذه نتيجتك القادمة دون عناء المتابعة؟ انضم الآن وانسخ جميع صفقاتنا القادمة تلقائيًا\\.\n\n`;
-    msg += `🌐 **ابدأ النسخ المباشر من هنا:**\n`;
-
-    // ✅ --- التصحيح الشامل ---
+    msg += ` ▪️ *متوسط سعر الدخول:* \`$${sanitizeMarkdownV2(formatSmart(avgBuyPrice))}\`\n`;
+    msg += ` ▪️ *متوسط سعر الخروج:* \`$${sanitizeMarkdownV2(formatSmart(avgSellPrice))}\`\n`;
+    msg += ` ▪️ *العائد النهائي \\(ROI\\):* \`${sanitizeMarkdownV2(pnlSign)}${sanitizeMarkdownV2(formatNumber(pnlPercent))}%\` 🟢\n`;
+    msg += ` ▪️ *مدة الصفقة:* \`${sanitizeMarkdownV2(formatNumber(durationDays, 1))} أيام\`\n\n`;
+    msg += `النتائج تتحدث عن نفسها\\. هذه هي قوة الاستراتيجية والانضباط\\. نبارك لكل من يثق في منهجيتنا\\.\n\n`;
+    msg += `هل تريد أن تكون هذه نتيجتك القادمة دون عناء؟ انضم الآن وانسخ جميع رحلاتنا القادمة تلقائيًا\\.\n\n`;
+    msg += `🌐 ابدأ النسخ المباشر من هنا:\n`;
     msg += `🏦 https://t\\.me/abusalamachart\n\n`;
-    // ------------------------------------
-
-    msg += `📢 **لمتابعة كافة التحديثات والنتائج:**\n`;
-    msg += `@abusalamachart\n`;
+    msg += `📢 @abusalamachart\n`;
     msg += `━━━━━━━━━━━━━━━━━━━━\n`;
-
-    // 4. التوقيع الآلي من البوت
-    msg += `*تحديث آلي من بوت مراقبة النسخ 🤖*`;
+    msg += `تحديث آلي من بوت مراقبة النسخ 🤖`;
 
     return msg;
 }
@@ -1171,6 +1167,7 @@ async function updatePositionAndAnalyze(asset, amountChange, price, newTotalAmou
                 highestPrice: price,
                 lowestPrice: price,
                 entryCapitalPercent: entryCapitalPercent,
+                journeyId: `${Date.now().toString().slice(-4)}` // <-- تعديل: إنشاء ID فريد للرحلة الجديدة
             };
             position = positions[asset];
         } else {
@@ -1195,6 +1192,7 @@ async function updatePositionAndAnalyze(asset, amountChange, price, newTotalAmou
             const closeDate = new Date();
             const openDate = new Date(position.openDate);
             const durationDays = (closeDate.getTime() - openDate.getTime()) / (1000 * 60 * 60 * 24);
+            const journeyId = position.journeyId; // <-- تعديل: الحصول على الـ ID قبل حذف المركز
 
             const closeReportData = {
                 asset,
@@ -1207,7 +1205,8 @@ async function updatePositionAndAnalyze(asset, amountChange, price, newTotalAmou
                 lowestPrice: position.lowestPrice,
                 entryCapitalPercent: position.entryCapitalPercent,
                 exitQuantityPercent: 100,
-                quantity: quantity
+                quantity: quantity,
+                journeyId: journeyId // <-- تعديل: إضافة الـ ID إلى تقرير الإغلاق
             };
 
             await saveClosedTrade(closeReportData);
@@ -1263,7 +1262,7 @@ async function monitorBalanceChanges() {
                 continue;
             }
             stateNeedsUpdate = true;
-            await sendDebugMessage("مراقبة الرصيد", "اكتشاف تغيير", `الأصل: ${asset}, التغيير: ${difference}`);
+             await sendDebugMessage("مراقبة الرصيد", "اكتشاف تغيير", `الأصل: ${asset}, التغيير: ${difference}`);
             const oldTotalValue = previousState.totalValue || 0;
             const { analysisResult } = await updatePositionAndAnalyze(asset, difference, priceData.price, currAmount, oldTotalValue);
             if (analysisResult.type === 'none') continue;
@@ -1273,8 +1272,23 @@ async function monitorBalanceChanges() {
             const newAssetValue = newAssetData ? newAssetData.value : 0;
             const newAssetWeight = newTotalValue > 0 ? (newAssetValue / newTotalValue) * 100 : 0;
             const newCashPercent = newTotalValue > 0 ? (newUsdtValue / newTotalValue) * 100 : 0;
-            const oldUsdtValue = previousBalances['USDT'] || 0;
-            const baseDetails = { asset, price: priceData.price, amountChange: difference, tradeValue, oldTotalValue, newAssetWeight, newUsdtValue, newCashPercent, oldUsdtValue, position: analysisResult.data.position };
+            const oldUsdtValue = previousBalances['USDT'] || 0; // <-- تعديل: جلب قيمة الكاش القديمة
+            
+            // <-- تعديل: إضافة journeyId و oldUsdtValue إلى التفاصيل
+            const baseDetails = { 
+                asset, 
+                price: priceData.price, 
+                amountChange: difference, 
+                tradeValue, 
+                oldTotalValue, 
+                newAssetWeight, 
+                newUsdtValue, 
+                newCashPercent, 
+                oldUsdtValue, 
+                position: analysisResult.data.position,
+                journeyId: analysisResult.data.position?.journeyId
+            };
+            
             const settings = await loadSettings();
             let privateMessage, publicMessage;
 
@@ -1326,7 +1340,6 @@ async function monitorBalanceChanges() {
         isProcessingBalance = false;
     }
 }
-
 async function trackPositionHighLow() {
     jobStatus.lastPositionTrack = Date.now();
     try {
