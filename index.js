@@ -2337,7 +2337,7 @@ async function startBot() {
         }
 
         // Send a startup message - THIS IS THE CORRECTED LINE
-        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم تشغيل البوت بنجاح \\(تابع محفظتك مباشر\\)*", { parse_mode: "MarkdownV2" }).catch(console.error);
+        await bot.api.sendMessage(AUTHORIZED_USER_ID, "✅ *تم تشغيل البوت بنجاح \\(وضع Polling للاختبار\\)*", { parse_mode: "MarkdownV2" }).catch(console.error);
 
         // 3. Finally, start the bot to listen for commands
         console.log("Bot is now fully operational for OKX in simple Polling mode.");
