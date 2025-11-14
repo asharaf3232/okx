@@ -1,23 +1,10 @@
 name: Deploy OKX Bot
-
-on:
-  push:
-    branches:
-      - main
-
+on: [push]
 jobs:
   deploy:
-    # 1. استخدم الـ Runner المجاني بتاعك
     runs-on: self-hosted
-    
     steps:
-    - name: Pull Latest Code & Reload
+    - name: Deploy using the master script
       run: |
-        # 2. اذهب إلى مجلد البوت (ده المسار الصحيح)
-        cd /root/bots/okx
-        
-        # 3. اسحب التعديلات الجديدة
-        git pull
-        
-        # 4. أعد تشغيل البوت بـ pm2
-        pm2 reload okx-bot
+        # نادي "السكرتير" واديه "المسار الكامل" واسم pm2
+        sudo /usr/local/bin/deploy_bot.sh /root/bots/okx okx-bot
