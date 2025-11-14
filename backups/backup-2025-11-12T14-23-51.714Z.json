@@ -1,0 +1,1029 @@
+{
+  "settings": {
+    "dailySummary": true,
+    "autoPostToChannel": true,
+    "debugMode": false,
+    "dailyReportTime": "22:00",
+    "technicalPatternAlerts": true,
+    "autoScanRecommendations": true
+  },
+  "positions": {
+    "STX": {
+      "totalAmountBought": 764.096026113,
+      "totalCost": 332.5345905643776,
+      "avgBuyPrice": 0.4352,
+      "openDate": "2025-11-11T02:34:39.004Z",
+      "totalAmountSold": 0,
+      "realizedValue": 0,
+      "highestPrice": 0.4484,
+      "lowestPrice": 0.4076,
+      "entryCapitalPercent": 9.948151795445243,
+      "journeyId": "9004"
+    },
+    "METIS": {
+      "totalAmountBought": 32.156510301,
+      "totalCost": 331.951655837223,
+      "avgBuyPrice": 10.323,
+      "openDate": "2025-11-11T02:36:03.783Z",
+      "totalAmountSold": 0,
+      "realizedValue": 0,
+      "highestPrice": 10.649,
+      "lowestPrice": 9.482,
+      "entryCapitalPercent": 9.931424906921404,
+      "journeyId": "3783"
+    },
+    "ORDI": {
+      "totalAmountBought": 63.072963900000005,
+      "totalCost": 331.82686307790004,
+      "avgBuyPrice": 5.261,
+      "openDate": "2025-11-11T02:36:49.064Z",
+      "totalAmountSold": 0,
+      "realizedValue": 0,
+      "highestPrice": 5.278,
+      "lowestPrice": 4.893,
+      "entryCapitalPercent": 4.9645127693058395,
+      "journeyId": "9064"
+    },
+    "GRT": {
+      "totalAmountBought": 4784.256612342,
+      "totalCost": 332.5536771238925,
+      "avgBuyPrice": 0.06951000000000002,
+      "openDate": "2025-11-11T02:43:39.434Z",
+      "totalAmountSold": 0,
+      "realizedValue": 0,
+      "highestPrice": 0.0696,
+      "lowestPrice": 0.06315,
+      "entryCapitalPercent": 4.976631509184488,
+      "journeyId": "9434"
+    },
+    "ETC": {
+      "totalAmountBought": 20.021152806,
+      "totalCost": 332.15092505154,
+      "avgBuyPrice": 16.59,
+      "openDate": "2025-11-11T02:44:49.422Z",
+      "totalAmountSold": 0,
+      "realizedValue": 0,
+      "highestPrice": 16.6,
+      "lowestPrice": 15.59,
+      "entryCapitalPercent": 9.958836507191899,
+      "journeyId": "9422"
+    },
+    "PYTH": {
+      "totalAmountBought": 3767.21901,
+      "totalCost": 414.71580420486,
+      "avgBuyPrice": 0.11008539803605949,
+      "openDate": "2025-11-11T03:17:20.820Z",
+      "totalAmountSold": 0,
+      "realizedValue": 0,
+      "highestPrice": 0.11168,
+      "lowestPrice": 0.09963,
+      "entryCapitalPercent": 4.979671952152294,
+      "journeyId": "0820"
+    },
+    "S": {
+      "totalAmountBought": 2741.833422,
+      "totalCost": 414.86372929170005,
+      "avgBuyPrice": 0.15130887455193476,
+      "openDate": "2025-11-11T03:19:05.671Z",
+      "totalAmountSold": 0,
+      "realizedValue": 0,
+      "highestPrice": 0.1585,
+      "lowestPrice": 0.1397,
+      "entryCapitalPercent": 4.964814220411061,
+      "journeyId": "5671"
+    },
+    "NEAR": {
+      "totalAmountBought": 183.01009867803,
+      "totalCost": 498.70251889763176,
+      "avgBuyPrice": 2.725,
+      "openDate": "2025-11-11T15:09:12.555Z",
+      "totalAmountSold": 0,
+      "realizedValue": 0,
+      "highestPrice": 2.725,
+      "lowestPrice": 2.537,
+      "entryCapitalPercent": 14.942010740675297,
+      "journeyId": "2555"
+    },
+    "YGG": {
+      "totalAmountBought": 1491.022763721,
+      "totalCost": 180.71195896298522,
+      "avgBuyPrice": 0.1212,
+      "openDate": "2025-11-11T17:14:06.986Z",
+      "totalAmountSold": 0,
+      "realizedValue": 0,
+      "highestPrice": 0.1216,
+      "lowestPrice": 0.1114,
+      "entryCapitalPercent": 5.519216725424897,
+      "journeyId": "6986"
+    }
+  },
+  "dailyHistory": [
+    {
+      "date": "2025-10-29",
+      "total": 2711.153138314285,
+      "time": 1761718776281
+    },
+    {
+      "date": "2025-10-30",
+      "total": 2719.542410818219,
+      "time": 1761813982098
+    },
+    {
+      "date": "2025-10-31",
+      "total": 2563.314414450717,
+      "time": 1761900382095
+    },
+    {
+      "date": "2025-11-01",
+      "total": 2668.01381051164,
+      "time": 1761986782333
+    },
+    {
+      "date": "2025-11-02",
+      "total": 2667.255456827691,
+      "time": 1762073182308
+    },
+    {
+      "date": "2025-11-03",
+      "total": 2554.742115825893,
+      "time": 1762159582380
+    },
+    {
+      "date": "2025-11-04",
+      "total": 2538.8259102338725,
+      "time": 1762245982439
+    },
+    {
+      "date": "2025-11-05",
+      "total": 2630.7595338662272,
+      "time": 1762332382464
+    },
+    {
+      "date": "2025-11-06",
+      "total": 2836.244774058003,
+      "time": 1762469644495
+    },
+    {
+      "date": "2025-11-07",
+      "total": 3548.373308951227,
+      "time": 1762542579182
+    },
+    {
+      "date": "2025-11-08",
+      "total": 3441.4146447310914,
+      "time": 1762634731146
+    },
+    {
+      "date": "2025-11-09",
+      "total": 3437.364572743312,
+      "time": 1762721130921
+    },
+    {
+      "date": "2025-11-10",
+      "total": 3342.6765794906382,
+      "time": 1762784632693
+    },
+    {
+      "date": "2025-11-11",
+      "total": 3232.464652884235,
+      "time": 1762871032117
+    }
+  ],
+  "hourlyHistory": [
+    {
+      "label": "2025-11-09T14",
+      "total": 3395.5865026347356,
+      "time": 1762699530964
+    },
+    {
+      "label": "2025-11-09T15",
+      "total": 3446.2430197326066,
+      "time": 1762703131631
+    },
+    {
+      "label": "2025-11-09T16",
+      "total": 3435.915003341374,
+      "time": 1762706731054
+    },
+    {
+      "label": "2025-11-09T17",
+      "total": 3414.576464936799,
+      "time": 1762710330726
+    },
+    {
+      "label": "2025-11-09T18",
+      "total": 3424.8840580394362,
+      "time": 1762713931000
+    },
+    {
+      "label": "2025-11-09T19",
+      "total": 3445.097604914316,
+      "time": 1762717530739
+    },
+    {
+      "label": "2025-11-09T20",
+      "total": 3437.3645728087454,
+      "time": 1762721130991
+    },
+    {
+      "label": "2025-11-09T21",
+      "total": 3424.008926944593,
+      "time": 1762724730698
+    },
+    {
+      "label": "2025-11-09T22",
+      "total": 3392.8141154982345,
+      "time": 1762728330713
+    },
+    {
+      "label": "2025-11-09T23",
+      "total": 3375.7853202430833,
+      "time": 1762731930700
+    },
+    {
+      "label": "2025-11-10T00",
+      "total": 3403.722432058675,
+      "time": 1762735531163
+    },
+    {
+      "label": "2025-11-10T01",
+      "total": 3387.6833196354673,
+      "time": 1762739196126
+    },
+    {
+      "label": "2025-11-10T02",
+      "total": 3375.913009409963,
+      "time": 1762742730684
+    },
+    {
+      "label": "2025-11-10T03",
+      "total": 3382.997338144727,
+      "time": 1762746330721
+    },
+    {
+      "label": "2025-11-10T04",
+      "total": 3349.0675184904517,
+      "time": 1762749930696
+    },
+    {
+      "label": "2025-11-10T05",
+      "total": 3352.806385490792,
+      "time": 1762753530716
+    },
+    {
+      "label": "2025-11-10T06",
+      "total": 3360.892264134301,
+      "time": 1762757130976
+    },
+    {
+      "label": "2025-11-10T07",
+      "total": 3366.9618135836063,
+      "time": 1762760730724
+    },
+    {
+      "label": "2025-11-10T08",
+      "total": 3338.967059582612,
+      "time": 1762764331099
+    },
+    {
+      "label": "2025-11-10T09",
+      "total": 3379.467484176196,
+      "time": 1762767930964
+    },
+    {
+      "label": "2025-11-10T10",
+      "total": 3360.902314962129,
+      "time": 1762771530957
+    },
+    {
+      "label": "2025-11-10T11",
+      "total": 3388.6723407479853,
+      "time": 1762775131135
+    },
+    {
+      "label": "2025-11-10T12",
+      "total": 3351.7994345985608,
+      "time": 1762778730969
+    },
+    {
+      "label": "2025-11-10T13",
+      "total": 3385.047224781165,
+      "time": 1762782330796
+    },
+    {
+      "label": "2025-11-10T14",
+      "total": 3342.6765794906382,
+      "time": 1762784632424
+    },
+    {
+      "label": "2025-11-10T15",
+      "total": 3342.676026901575,
+      "time": 1762788231977
+    },
+    {
+      "label": "2025-11-10T16",
+      "total": 3342.6749258464706,
+      "time": 1762791848420
+    },
+    {
+      "label": "2025-11-10T17",
+      "total": 3342.6743104557418,
+      "time": 1762795432269
+    },
+    {
+      "label": "2025-11-10T18",
+      "total": 3342.67494213634,
+      "time": 1762799032223
+    },
+    {
+      "label": "2025-11-10T19",
+      "total": 3342.675617094702,
+      "time": 1762802632241
+    },
+    {
+      "label": "2025-11-10T20",
+      "total": 3342.6781699052867,
+      "time": 1762806232645
+    },
+    {
+      "label": "2025-11-10T21",
+      "total": 3342.6785145015338,
+      "time": 1762809832501
+    },
+    {
+      "label": "2025-11-10T22",
+      "total": 3342.676927935906,
+      "time": 1762813431942
+    },
+    {
+      "label": "2025-11-10T23",
+      "total": 3342.678265387028,
+      "time": 1762817063698
+    },
+    {
+      "label": "2025-11-11T00",
+      "total": 3342.676942779442,
+      "time": 1762820631989
+    },
+    {
+      "label": "2025-11-11T01",
+      "total": 3342.6791035867277,
+      "time": 1762824232049
+    },
+    {
+      "label": "2025-11-11T02",
+      "total": 3342.675639140831,
+      "time": 1762827832299
+    },
+    {
+      "label": "2025-11-11T03",
+      "total": 3338.074846190205,
+      "time": 1762831432298
+    },
+    {
+      "label": "2025-11-11T04",
+      "total": 3326.202675561988,
+      "time": 1762835031961
+    },
+    {
+      "label": "2025-11-11T05",
+      "total": 3263.481264307253,
+      "time": 1762838632243
+    },
+    {
+      "label": "2025-11-11T06",
+      "total": 3263.4393057796833,
+      "time": 1762842232198
+    },
+    {
+      "label": "2025-11-11T07",
+      "total": 3252.2568183427975,
+      "time": 1762845832221
+    },
+    {
+      "label": "2025-11-11T08",
+      "total": 3238.535504488423,
+      "time": 1762849497371
+    },
+    {
+      "label": "2025-11-11T09",
+      "total": 3245.0346903870554,
+      "time": 1762853032008
+    },
+    {
+      "label": "2025-11-11T10",
+      "total": 3232.1866368107267,
+      "time": 1762856632220
+    },
+    {
+      "label": "2025-11-11T11",
+      "total": 3250.3180714569044,
+      "time": 1762860232332
+    },
+    {
+      "label": "2025-11-11T12",
+      "total": 3231.5549543427405,
+      "time": 1762863831969
+    },
+    {
+      "label": "2025-11-11T13",
+      "total": 3238.285832208344,
+      "time": 1762867432280
+    },
+    {
+      "label": "2025-11-11T14",
+      "total": 3232.464652884235,
+      "time": 1762871032054
+    },
+    {
+      "label": "2025-11-11T15",
+      "total": 3238.061027872474,
+      "time": 1762874631972
+    },
+    {
+      "label": "2025-11-11T16",
+      "total": 3280.318251137481,
+      "time": 1762878232308
+    },
+    {
+      "label": "2025-11-11T17",
+      "total": 3279.495270602739,
+      "time": 1762881831981
+    },
+    {
+      "label": "2025-11-11T18",
+      "total": 3235.5094946027734,
+      "time": 1762885431974
+    },
+    {
+      "label": "2025-11-11T19",
+      "total": 3211.9182110923252,
+      "time": 1762889032303
+    },
+    {
+      "label": "2025-11-11T20",
+      "total": 3188.5296253867664,
+      "time": 1762892632249
+    },
+    {
+      "label": "2025-11-11T21",
+      "total": 3172.6164558401033,
+      "time": 1762896232297
+    },
+    {
+      "label": "2025-11-11T22",
+      "total": 3159.307149170293,
+      "time": 1762899832232
+    },
+    {
+      "label": "2025-11-11T23",
+      "total": 3167.6725602594456,
+      "time": 1762903432223
+    },
+    {
+      "label": "2025-11-12T00",
+      "total": 3146.774756973843,
+      "time": 1762907032258
+    },
+    {
+      "label": "2025-11-12T01",
+      "total": 3164.2476518422545,
+      "time": 1762910632220
+    },
+    {
+      "label": "2025-11-12T02",
+      "total": 3161.7926728097686,
+      "time": 1762914232213
+    },
+    {
+      "label": "2025-11-12T03",
+      "total": 3170.6097322114892,
+      "time": 1762917832218
+    },
+    {
+      "label": "2025-11-12T04",
+      "total": 3163.2085606202545,
+      "time": 1762921432227
+    },
+    {
+      "label": "2025-11-12T05",
+      "total": 3184.132016963535,
+      "time": 1762925032240
+    },
+    {
+      "label": "2025-11-12T06",
+      "total": 3197.926568814073,
+      "time": 1762928632229
+    },
+    {
+      "label": "2025-11-12T07",
+      "total": 3191.8963595443934,
+      "time": 1762932232458
+    },
+    {
+      "label": "2025-11-12T08",
+      "total": 3191.0918324217987,
+      "time": 1762935832863
+    },
+    {
+      "label": "2025-11-12T09",
+      "total": 3245.471200648839,
+      "time": 1762939432271
+    },
+    {
+      "label": "2025-11-12T10",
+      "total": 3287.853739656144,
+      "time": 1762943032345
+    },
+    {
+      "label": "2025-11-12T11",
+      "total": 3270.950445075549,
+      "time": 1762946632248
+    },
+    {
+      "label": "2025-11-12T12",
+      "total": 3274.547637064764,
+      "time": 1762950232638
+    },
+    {
+      "label": "2025-11-12T13",
+      "total": 3245.236243039492,
+      "time": 1762953832813
+    }
+  ],
+  "balanceState": {
+    "balances": {
+      "NEAR": 183.010098765412,
+      "S": 2741.855606,
+      "PYTH": 3767.229293,
+      "STX": 764.096026139,
+      "METIS": 32.156512539999994,
+      "ORDI": 63.07380182,
+      "ETC": 20.021152806,
+      "GRT": 4784.2566379340005,
+      "USDT": 184.5669180478376,
+      "YGG": 1491.022767741,
+      "MOVE": 0.8456,
+      "POL": 0.15945,
+      "RENDER": 0.0108929,
+      "WLD": 0.031115,
+      "ZRO": 0.01189,
+      "IP": 0.003655,
+      "KAITO": 0.014719,
+      "PROMPT": 0.1105,
+      "ETH": 0.000003019,
+      "TIA": 0.0026038,
+      "ZK": 0.03939,
+      "ARKM": 0.005791,
+      "BTC": 1.663e-8,
+      "ZETA": 0.014127,
+      "APT": 0.0003562,
+      "AIXBT": 0.017541,
+      "SOL": 0.000005551,
+      "OP": 0.0019639,
+      "ADA": 0.00134026,
+      "SUI": 0.00031408,
+      "TON": 0.0002889,
+      "TRUMP": 0.00007,
+      "ARB": 0.0011645,
+      "NOT": 0.4124,
+      "UXLINK": 0.004572,
+      "AVAX": 0.000005721,
+      "LTC": 8.7e-7,
+      "BLUR": 0.0015554,
+      "FET": 0.000155,
+      "AR": 0.000007154,
+      "LINK": 0.000001914,
+      "DOT": 0.000008166,
+      "GMT": 0.00080078,
+      "LPT": 0.000003072,
+      "XRP": 0.00000554,
+      "W": 0.0001573,
+      "CITY": 0.0000118,
+      "ATOM": 0.00000245,
+      "PEPE": 0.9136,
+      "KSM": 3.864e-7,
+      "ACT": 0.000183,
+      "AUCTION": 5.824e-7,
+      "ID": 0.000027,
+      "HBAR": 0.000014839,
+      "XLM": 0.000008964,
+      "TRB": 8.64e-8,
+      "ENS": 9.3e-8,
+      "MINA": 0.00000717,
+      "FIL": 4.15e-7,
+      "OM": 0.000008022,
+      "MASK": 8.28e-7,
+      "AERGO": 0.00000658,
+      "PHA": 0.000007237,
+      "ME": 8e-7,
+      "ALGO": 0.000001713,
+      "DOGE": 0.000001708,
+      "SAND": 8.02e-7,
+      "IOTA": 8.1e-7,
+      "CFX": 7.658e-7,
+      "CHZ": 7.1e-7,
+      "RSR": 0.000001709,
+      "LAT": 9.144e-7,
+      "API3": 3e-9,
+      "VRA": 8.224e-7
+    },
+    "totalValue": 3241.425411925487
+  },
+  "priceAlerts": [],
+  "alertSettings": {
+    "global": 5,
+    "overrides": {}
+  },
+  "priceTracker": {
+    "totalPortfolioValue": 3261.8090100103286,
+    "assets": {
+      "NEAR": 2.62,
+      "S": 0.1515,
+      "PYTH": 0.10558,
+      "YGG": 0.1178,
+      "STX": 0.4269,
+      "METIS": 9.937,
+      "ORDI": 5.058,
+      "ETC": 15.93,
+      "GRT": 0.06657
+    }
+  },
+  "capital": {
+    "value": 6600
+  },
+  "virtualTrades": [],
+  "tradeHistory": [
+    {
+      "_id": "f1ea5442257b74f967dd9b6291836531",
+      "asset": "NEAR",
+      "pnl": 1154.5297194835316,
+      "pnlPercent": 44.04332129963899,
+      "durationDays": 1.8441312384259259,
+      "avgBuyPrice": 1.939,
+      "avgSellPrice": 2.793,
+      "highestPrice": 2.925,
+      "lowestPrice": 1.89,
+      "entryCapitalPercent": 96.49930616344552,
+      "exitQuantityPercent": 100,
+      "quantity": 1351.90833663177,
+      "journeyId": "3344",
+      "closedAt": "2025-11-07T19:10:06.284Z"
+    },
+    {
+      "_id": "5f221ffa907c6f549d56facb1525ea5f",
+      "asset": "TON",
+      "pnl": -54.6114397941,
+      "pnlPercent": -3.0923850111013578,
+      "durationDays": 1.2057672453703703,
+      "avgBuyPrice": 2.1092253691664506,
+      "avgSellPrice": 2.044,
+      "highestPrice": 2.149,
+      "lowestPrice": 2.049,
+      "entryCapitalPercent": 12.447764048266977,
+      "exitQuantityPercent": 100,
+      "quantity": 837.2729889,
+      "journeyId": "7330",
+      "closedAt": "2025-11-09T02:57:05.623Z"
+    },
+    {
+      "_id": "47bab7fa0345d605236e8b78de5de8d8",
+      "asset": "ZK",
+      "pnl": -20.171900194108797,
+      "pnlPercent": -1.6768986594449458,
+      "durationDays": 2.0035337384259257,
+      "avgBuyPrice": 0.06009188092243814,
+      "avgSellPrice": 0.05908420097681452,
+      "highestPrice": 0.06835,
+      "lowestPrice": 0.05377,
+      "entryCapitalPercent": 4.959110336639225,
+      "exitQuantityPercent": 100,
+      "quantity": 20018.1618,
+      "journeyId": "4098",
+      "closedAt": "2025-11-09T20:45:39.414Z"
+    },
+    {
+      "_id": "5005b55f20611393f94b387d1809f218",
+      "asset": "RENDER",
+      "pnl": 5.164179650999999,
+      "pnlPercent": 1.0606784673545997,
+      "durationDays": 0.1038793287037037,
+      "avgBuyPrice": 2.404496028378592,
+      "avgSellPrice": 2.43,
+      "highestPrice": 2.477,
+      "lowestPrice": 2.401,
+      "entryCapitalPercent": 7.099160553997288,
+      "exitQuantityPercent": 100,
+      "quantity": 202.48531199999996,
+      "journeyId": "0224",
+      "closedAt": "2025-11-09T21:11:45.398Z"
+    },
+    {
+      "_id": "f8bcd48e6e4c57e878ad838190990a3a",
+      "asset": "ARB",
+      "pnl": -6.33850490029975,
+      "pnlPercent": -0.8876247866913174,
+      "durationDays": 2.023524027777778,
+      "avgBuyPrice": 0.301221232419754,
+      "avgSellPrice": 0.2985475180980192,
+      "highestPrice": 0.3131,
+      "lowestPrice": 0.2848,
+      "entryCapitalPercent": 4.961657984964464,
+      "exitQuantityPercent": 100,
+      "quantity": 2370.673953,
+      "journeyId": "9298",
+      "closedAt": "2025-11-09T21:12:21.774Z"
+    },
+    {
+      "_id": "72b252948e9c12b8de1e5871985999d5",
+      "asset": "ZRO",
+      "pnl": 3.6810630371782467,
+      "pnlPercent": 0.5400859635565926,
+      "durationDays": 0.3271834375,
+      "avgBuyPrice": 1.674,
+      "avgSellPrice": 1.6830410390299373,
+      "highestPrice": 1.722,
+      "lowestPrice": 1.672,
+      "entryCapitalPercent": 20.15136436297473,
+      "exitQuantityPercent": 100,
+      "quantity": 407.150442,
+      "journeyId": "3307",
+      "closedAt": "2025-11-09T21:12:21.955Z"
+    },
+    {
+      "_id": "b342cfc36a1b64d1ea664ad07bc52633",
+      "asset": "APT",
+      "pnl": 0.5494739759999883,
+      "pnlPercent": 0.3124023742580377,
+      "durationDays": 2.0239374305555557,
+      "avgBuyPrice": 3.201,
+      "avgSellPrice": 3.211,
+      "highestPrice": 3.272,
+      "lowestPrice": 2.938,
+      "entryCapitalPercent": 4.958993345437138,
+      "exitQuantityPercent": 100,
+      "quantity": 54.9473976,
+      "journeyId": "3960",
+      "closedAt": "2025-11-09T21:12:22.155Z"
+    },
+    {
+      "_id": "173c71160c8a414edebd864fc6d6a094",
+      "asset": "ATOM",
+      "pnl": -6.5222318593799935,
+      "pnlPercent": -3.706111833550061,
+      "durationDays": 2.0220849652777777,
+      "avgBuyPrice": 3.076,
+      "avgSellPrice": 2.962,
+      "highestPrice": 3.153,
+      "lowestPrice": 2.841,
+      "entryCapitalPercent": 4.963739528619675,
+      "exitQuantityPercent": 100,
+      "quantity": 57.21256017,
+      "journeyId": "4193",
+      "closedAt": "2025-11-09T21:12:22.334Z"
+    },
+    {
+      "_id": "db34130470b3edec74c45bc3d0336700",
+      "asset": "ARKM",
+      "pnl": -8.244086061599996,
+      "pnlPercent": -4.68180543874404,
+      "durationDays": 2.0251536689814813,
+      "avgBuyPrice": 0.3567,
+      "avgSellPrice": 0.34,
+      "highestPrice": 0.362,
+      "lowestPrice": 0.3181,
+      "entryCapitalPercent": 4.963661140413292,
+      "exitQuantityPercent": 100,
+      "quantity": 493.657848,
+      "journeyId": "9252",
+      "closedAt": "2025-11-09T21:12:22.529Z"
+    },
+    {
+      "_id": "5e1f9fa2a24b0aabf3925d7471899c91",
+      "asset": "POL",
+      "pnl": -1.5467556959999906,
+      "pnlPercent": -0.8776741634668076,
+      "durationDays": 2.028198587962963,
+      "avgBuyPrice": 0.1823,
+      "avgSellPrice": 0.1807,
+      "highestPrice": 0.1877,
+      "lowestPrice": 0.1718,
+      "entryCapitalPercent": 4.965316623483161,
+      "exitQuantityPercent": 100,
+      "quantity": 966.72231,
+      "journeyId": "4029",
+      "closedAt": "2025-11-09T21:12:30.387Z"
+    },
+    {
+      "_id": "ffd174be1e8400966bf1ed7e136dc80f",
+      "asset": "RSR",
+      "pnl": -1.2846233969837213,
+      "pnlPercent": -0.7285595337219049,
+      "durationDays": 2.0268099189814817,
+      "avgBuyPrice": 0.004804,
+      "avgSellPrice": 0.004769,
+      "highestPrice": 0.00488,
+      "lowestPrice": 0.004472,
+      "entryCapitalPercent": 4.970502111781319,
+      "exitQuantityPercent": 100,
+      "quantity": 36703.525628106,
+      "journeyId": "4175",
+      "closedAt": "2025-11-09T21:12:30.552Z"
+    },
+    {
+      "_id": "dd8f97ee35238b4650478889545da67c",
+      "asset": "KAITO",
+      "pnl": -7.081161749999996,
+      "pnlPercent": -4.0223104151024325,
+      "durationDays": 2.0272755324074074,
+      "avgBuyPrice": 0.9323,
+      "avgSellPrice": 0.8948,
+      "highestPrice": 0.9443,
+      "lowestPrice": 0.8559,
+      "entryCapitalPercent": 4.9618563355411585,
+      "exitQuantityPercent": 100,
+      "quantity": 188.83098,
+      "journeyId": "4102",
+      "closedAt": "2025-11-09T21:12:30.708Z"
+    },
+    {
+      "_id": "ca6bd4e5a9d03b57e5a52be5047e97b1",
+      "asset": "WLD",
+      "pnl": -7.911581299200021,
+      "pnlPercent": -4.494382022471922,
+      "durationDays": 2.028030914351852,
+      "avgBuyPrice": 0.8544,
+      "avgSellPrice": 0.816,
+      "highestPrice": 0.8717,
+      "lowestPrice": 0.7814,
+      "entryCapitalPercent": 4.960508774577594,
+      "exitQuantityPercent": 100,
+      "quantity": 206.030763,
+      "journeyId": "9025",
+      "closedAt": "2025-11-09T21:12:30.896Z"
+    },
+    {
+      "_id": "8653c64c48e70745d57109f801d4a917",
+      "asset": "HBAR",
+      "pnl": -2.073522494307591,
+      "pnlPercent": -1.1782528193906698,
+      "durationDays": 2.0283119444444444,
+      "avgBuyPrice": 0.17823,
+      "avgSellPrice": 0.17613,
+      "highestPrice": 0.18006,
+      "lowestPrice": 0.16846,
+      "entryCapitalPercent": 4.958254341750454,
+      "exitQuantityPercent": 100,
+      "quantity": 987.391663956,
+      "journeyId": "4509",
+      "closedAt": "2025-11-09T21:12:40.661Z"
+    },
+    {
+      "_id": "b6b109c381ef416ca96566fc5121972d",
+      "asset": "APT",
+      "pnl": -2.350190756700089,
+      "pnlPercent": -0.27598896044159277,
+      "durationDays": 0.5752356828703704,
+      "avgBuyPrice": 3.261,
+      "avgSellPrice": 3.252,
+      "highestPrice": 3.324,
+      "lowestPrice": 3.196,
+      "entryCapitalPercent": 24.888786285122844,
+      "exitQuantityPercent": 100,
+      "quantity": 261.1323063,
+      "journeyId": "3106",
+      "closedAt": "2025-11-10T12:09:03.469Z"
+    },
+    {
+      "_id": "eb3770a195599117c4588ff398e191cc",
+      "asset": "RENDER",
+      "pnl": 23.099812065000005,
+      "pnlPercent": 6.776180698151952,
+      "durationDays": 0.3806184722222222,
+      "avgBuyPrice": 2.435,
+      "avgSellPrice": 2.6,
+      "highestPrice": 2.639,
+      "lowestPrice": 2.425,
+      "entryCapitalPercent": 10.07506506248169,
+      "exitQuantityPercent": 100,
+      "quantity": 139.998861,
+      "journeyId": "8264",
+      "closedAt": "2025-11-10T12:09:03.700Z"
+    },
+    {
+      "_id": "9ac1dbf445ca506eadada1b79148b1d9",
+      "asset": "GRT",
+      "pnl": 4.115902860476627,
+      "pnlPercent": 1.2109716953603695,
+      "durationDays": 0.3805077777777778,
+      "avgBuyPrice": 0.06854,
+      "avgSellPrice": 0.06937,
+      "highestPrice": 0.07065,
+      "lowestPrice": 0.0684,
+      "entryCapitalPercent": 10.04723539521327,
+      "exitQuantityPercent": 100,
+      "quantity": 4958.919109008,
+      "journeyId": "7988",
+      "closedAt": "2025-11-10T12:09:03.860Z"
+    },
+    {
+      "_id": "66f62d100baf78b57dd5b9871819c910",
+      "asset": "DOT",
+      "pnl": -0.4177535283000004,
+      "pnlPercent": -0.12303906490310686,
+      "durationDays": 0.37547225694444447,
+      "avgBuyPrice": 3.251,
+      "avgSellPrice": 3.247,
+      "highestPrice": 3.278,
+      "lowestPrice": 3.2,
+      "entryCapitalPercent": 10.032048387296303,
+      "exitQuantityPercent": 100,
+      "quantity": 104.438382075,
+      "journeyId": "3294",
+      "closedAt": "2025-11-10T12:09:04.097Z"
+    },
+    {
+      "_id": "065ec8bfea9c025e9fb3e06484c5a10b",
+      "asset": "RENDER",
+      "pnl": -0.32204663100010755,
+      "pnlPercent": -0.037369207772807694,
+      "durationDays": 0.041399930555555554,
+      "avgBuyPrice": 2.676,
+      "avgSellPrice": 2.675,
+      "highestPrice": 2.757,
+      "lowestPrice": 2.634,
+      "entryCapitalPercent": 25.661237654116608,
+      "exitQuantityPercent": 100,
+      "quantity": 322.046631,
+      "journeyId": "0433",
+      "closedAt": "2025-11-10T14:04:27.387Z"
+    },
+    {
+      "_id": "c00da82890c90d1d3ba0aa4dc2c7cd81",
+      "asset": "LTC",
+      "pnl": -47.11913166204016,
+      "pnlPercent": -2.7537531210347956,
+      "durationDays": 0.6561351388888889,
+      "avgBuyPrice": 110.01967009910632,
+      "avgSellPrice": 106.99,
+      "highestPrice": 113.56,
+      "lowestPrice": 106.16,
+      "entryCapitalPercent": 24.820909585379777,
+      "exitQuantityPercent": 100,
+      "quantity": 15.552561869999998,
+      "journeyId": "3110",
+      "closedAt": "2025-11-10T14:04:43.186Z"
+    },
+    {
+      "_id": "7c8e10301bc7c1a8b367e9c4e2d6d31a",
+      "asset": "ZRO",
+      "pnl": -28.97278621200002,
+      "pnlPercent": -5.681289342486585,
+      "durationDays": 0.46179908564814814,
+      "avgBuyPrice": 1.7027374407519706,
+      "avgSellPrice": 1.606,
+      "highestPrice": 1.767,
+      "lowestPrice": 1.607,
+      "entryCapitalPercent": 9.94297021760234,
+      "exitQuantityPercent": 100,
+      "quantity": 299.499201,
+      "journeyId": "8232",
+      "closedAt": "2025-11-10T14:05:27.673Z"
+    },
+    {
+      "_id": "194fc67f986ba47fc824f8b3126b712d",
+      "asset": "METIS",
+      "pnl": -2.034622161179999,
+      "pnlPercent": -3.0866999546073517,
+      "durationDays": 0.45774741898148147,
+      "avgBuyPrice": 11.015,
+      "avgSellPrice": 10.675,
+      "highestPrice": 11.504,
+      "lowestPrice": 10.422,
+      "entryCapitalPercent": 1.9493209291211864,
+      "exitQuantityPercent": 100,
+      "quantity": 5.984182827,
+      "journeyId": "8488",
+      "closedAt": "2025-11-10T14:05:27.865Z"
+    },
+    {
+      "_id": "153b1983129e9c94b16bfde5b232eb04",
+      "asset": "PROMPT",
+      "pnl": 22.952758647290427,
+      "pnlPercent": 6.9366379590731135,
+      "durationDays": 0.11841905092592593,
+      "avgBuyPrice": 0.09227550188048476,
+      "avgSellPrice": 0.0986763193708517,
+      "highestPrice": 0.10311,
+      "lowestPrice": 0.09118,
+      "entryCapitalPercent": 5.070583251471844,
+      "exitQuantityPercent": 100,
+      "quantity": 3585.9105,
+      "journeyId": "2895",
+      "closedAt": "2025-11-11T18:12:44.304Z"
+    }
+  ],
+  "technicalAlertsState": {},
+  "latencyLogs": [],
+  "timestamp": "2025-11-12T14-23-51.714Z"
+}

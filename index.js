@@ -422,7 +422,7 @@ function formatPublicBuy(details) {
 
     const safeJourneyId = sanitizeMarkdownV2(journeyId || 'N/A');
 
-    let msg = `*🎯 يوميات المحفظة: بناء مركز استراتيجي | الرحلة #${safeJourneyId}*\n`;
+    let msg = `*🎯 يوميات المحفظة: بناء مركز استراتيجي \\| الرحلة \\#${safeJourneyId}*\n`;
     msg += `━━━━━━━━━━━━━━━━━━━━\n`;
     msg += `تم تخصيص جزء من رأس المال لمركز جديد في *أصل رقمي* \\(سيتم الكشف عنه لاحقاً عند تحقيق أول هدف\\)\\.\n\n`;
     msg += `الهدف هو التركيز على **المنهجية** وليس الأصل\\.\n\n`;
@@ -462,7 +462,7 @@ function formatPublicSell(details) {
     const safeJourneyId = sanitizeMarkdownV2(journeyId || 'N/A');
     const safeAsset = sanitizeMarkdownV2(asset);
 
-    let msg = `*⚙️ كشف الرحلة #${safeJourneyId} وتحقيق الهدف الأول 🟠*\n`;
+    let msg = `*⚙️ كشف الرحلة \\#${safeJourneyId} وتحقيق الهدف الأول 🟠*\n`;
     msg += `━━━━━━━━━━━━━━━━━━━━\n`;
     msg += `هل تذكرون المركز الاستراتيجي المجهول الذي بدأناه؟\n\n`;
     msg += `يسرنا الكشف أنه كان لعملة: **${safeAsset}**\n\n`;
@@ -484,7 +484,7 @@ function formatPublicSell(details) {
 }
 
 /**
- * NEW TEMPLATE V148.5
+ * NEW TEMPLATE V148.5 (FIXED + Professional Loss Text)
  * Formats the FINAL report for a closed position for the public channel.
  * It provides a full summary of the now-known journey.
  * @param {object} details - The closed trade report object.
@@ -494,18 +494,33 @@ function formatPublicClose(details) {
     const { journeyId, asset, avgBuyPrice, avgSellPrice, pnlPercent, durationDays } = details;
 
     const pnlSign = pnlPercent >= 0 ? '+' : '';
+    
+    // --- START CORRECTION ---
+    // 1. تحديد الإيموجي والنصوص بناءً على النتيجة
+    const pnlEmoji = pnlPercent >= 0 ? '🟢' : '🔴';
+    const statusEmoji = pnlPercent >= 0 ? '✅' : '🔻';
+    const titleText = pnlPercent >= 0 ? 'الرابحة' : 'المغلقة';
+
+    // --- تعديل احترافي لنص الخسارة ---
+    const closingText = pnlPercent >= 0
+        ? `النتائج تتحدث عن نفسها\\. هذه هي قوة الاستراتيجية والانضباط\\. نبارك لكل من يثق في منهجيتنا\\.`
+        : `تم إغلاق هذا المركز كجزء من استراتيجية إدارة المخاطر المحددة مسبقاً\\. الحفاظ على رأس المال هو أولويتنا للبحث عن فرص قادمة ذات احتمالية نجاح أعلى\\. نحن نتداول بمنهجية وانضباط تام\\.`;
+    // --- END CORRECTION ---
+
     const safeJourneyId = sanitizeMarkdownV2(journeyId || 'N/A');
     const safeAsset = sanitizeMarkdownV2(asset);
 
-    let msg = `*🏆 النتيجة النهائية للرحلة #${safeJourneyId}: ${safeAsset} ✅*\n`;
+    // 2. تطبيق النصوص والإيموجي الديناميكية
+    let msg = `*🏆 النتيجة النهائية للرحلة \\#${safeJourneyId}: ${safeAsset} ${statusEmoji}*\n`;
     msg += `━━━━━━━━━━━━━━━━━━━━\n`;
-    msg += `من البداية المجهولة إلى النهاية الرابحة، هذه هي الحصيلة الكاملة لصفقة **${safeAsset}**\\.\n\n`;
+    msg += `من البداية المجهولة إلى النهاية ${titleText}، هذه هي الحصيلة الكاملة لصفقة **${safeAsset}**\\.\n\n`;
     msg += `*ملخص أداء الصفقة:*\n`;
     msg += ` ▪️ *متوسط سعر الدخول:* \`$${sanitizeMarkdownV2(formatSmart(avgBuyPrice))}\`\n`;
     msg += ` ▪️ *متوسط سعر الخروج:* \`$${sanitizeMarkdownV2(formatSmart(avgSellPrice))}\`\n`;
-    msg += ` ▪️ *العائد النهائي \\(ROI\\):* \`${sanitizeMarkdownV2(pnlSign)}${sanitizeMarkdownV2(formatNumber(pnlPercent))}%\` 🟢\n`;
+    msg += ` ▪️ *العائد النهائي \\(ROI\\):* \`${sanitizeMarkdownV2(pnlSign)}${sanitizeMarkdownV2(formatNumber(pnlPercent))}%\` ${pnlEmoji}\n`;
     msg += ` ▪️ *مدة الصفقة:* \`${sanitizeMarkdownV2(formatNumber(durationDays, 1))} أيام\`\n\n`;
-    msg += `النتائج تتحدث عن نفسها\\. هذه هي قوة الاستراتيجية والانضباط\\. نبارك لكل من يثق في منهجيتنا\\.\n\n`;
+    msg += `${closingText}\n\n`;
+    
     msg += `هل تريد أن تكون هذه نتيجتك القادمة دون عناء؟ انضم الآن وانسخ جميع رحلاتنا القادمة تلقائيًا\\.\n\n`;
     msg += `🌐 ابدأ النسخ المباشر من هنا:\n`;
     msg += `🏦 https://t\\.me/abusalamachart\n\n`;
@@ -515,7 +530,6 @@ function formatPublicClose(details) {
 
     return msg;
 }
-
 async function formatPortfolioMsg(assets, total, capital) {
     const positions = await loadPositions();
     const usdtAsset = assets.find(a => a.asset === "USDT") || { value: 0 };
@@ -1145,6 +1159,9 @@ async function checkTechnicalPatterns() {
     }
 }
 
+// -----------------------------------------------------------------
+// --- الدالة المُعدلة الأولى (لفرز أنواع الشراء) ---
+// -----------------------------------------------------------------
 async function updatePositionAndAnalyze(asset, amountChange, price, newTotalAmount, oldTotalValue) {
     if (!asset || price === undefined || price === null || isNaN(price)) {
         return { analysisResult: null };
@@ -1157,7 +1174,10 @@ async function updatePositionAndAnalyze(asset, amountChange, price, newTotalAmou
     if (amountChange > 0) { // Buy logic
         const tradeValue = amountChange * price;
         const entryCapitalPercent = oldTotalValue > 0 ? (tradeValue / oldTotalValue) * 100 : 0;
+        
+        // --- START CORRECTION ---
         if (!position) {
+            // ---  هذا هو الشراء الأول (فتح مركز) ---
             positions[asset] = {
                 totalAmountBought: amountChange,
                 totalCost: tradeValue,
@@ -1168,17 +1188,21 @@ async function updatePositionAndAnalyze(asset, amountChange, price, newTotalAmou
                 highestPrice: price,
                 lowestPrice: price,
                 entryCapitalPercent: entryCapitalPercent,
-                journeyId: `${Date.now().toString().slice(-4)}` // <-- تعديل: إنشاء ID فريد للرحلة الجديدة
+                journeyId: `${Date.now().toString().slice(-4)}`
             };
             position = positions[asset];
+            analysisResult.type = 'new_buy'; // <-- تعديل: تحديد نوع الشراء
         } else {
+            // ---  هذا شراء تعزيز (DCA) ---
             position.totalAmountBought += amountChange;
             position.totalCost += tradeValue;
             position.avgBuyPrice = position.totalCost / position.totalAmountBought;
             if (price > position.highestPrice) position.highestPrice = price;
             if (price < position.lowestPrice) position.lowestPrice = price;
+            analysisResult.type = 'reinforce_buy'; // <-- تعديل: تحديد نوع الشراء
         }
-        analysisResult.type = 'buy';
+        // --- END CORRECTION ---
+
     } else if (amountChange < 0 && position) { // Sell logic
         const soldAmount = Math.abs(amountChange);
         position.realizedValue = (position.realizedValue || 0) + (soldAmount * price);
@@ -1223,6 +1247,9 @@ async function updatePositionAndAnalyze(asset, amountChange, price, newTotalAmou
     return { analysisResult };
 }
 
+// -----------------------------------------------------------------
+// --- الدالة المُعدلة الثانية (لمنع إرسال التعزيز للقناة) ---
+// -----------------------------------------------------------------
 async function monitorBalanceChanges() {
     if (isProcessingBalance) {
         return;
@@ -1302,12 +1329,25 @@ async function monitorBalanceChanges() {
                 }
             };
 
-            if (analysisResult.type === 'buy') {
+            // --- START CORRECTION ---
+            if (analysisResult.type === 'new_buy') {
+                // ---  إجراء فتح مركز جديد ---
+                // أرسل إشعاراً خاصاً وإشعاراً عاماً
                 privateMessage = formatPrivateBuy(baseDetails);
                 publicMessage = formatPublicBuy(baseDetails);
                 await sendMessageSafely(AUTHORIZED_USER_ID, privateMessage);
                 if (settings.autoPostToChannel) await sendMessageSafely(TARGET_CHANNEL_ID, publicMessage);
-            } else if (analysisResult.type === 'sell') {
+            
+            } else if (analysisResult.type === 'reinforce_buy') {
+                // ---  إجراء تعزيز مركز قائم (DCA) ---
+                // أرسل إشعاراً خاصاً لك فقط (لمنع إغراق القناة)
+                privateMessage = formatPrivateBuy(baseDetails);
+                await sendMessageSafely(AUTHORIZED_USER_ID, privateMessage);
+                // (ملاحظة: لا نرسل شيئاً إلى القناة العامة هنا عن قصد)
+
+            } 
+            // --- END CORRECTION ---
+              else if (analysisResult.type === 'sell') {
                 privateMessage = formatPrivateSell(baseDetails);
                 publicMessage = formatPublicSell(baseDetails);
                 await sendMessageSafely(AUTHORIZED_USER_ID, privateMessage);
@@ -1566,7 +1606,6 @@ async function formatCumulativeReport(asset) {
         return "❌ حدث خطأ أثناء إنشاء التقرير التراكمي\\.";
     }
 }
-
 // =================================================================
 // SECTION 6: BOT KEYBOARDS & MENUS
 // =================================================================
