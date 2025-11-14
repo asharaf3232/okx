@@ -3,19 +3,21 @@ name: Deploy OKX Bot
 on:
   push:
     branches:
-      - main # أو اسم الفرع الرئيسي لديك
+      - main
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    # 1. استخدم الـ Runner المجاني بتاعك
+    runs-on: self-hosted
+    
     steps:
-    - name: SSH and Deploy
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.VPS_SSH_HOST }}
-        username: ${{ secrets.VPS_SSH_USERNAME }}
-        key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
-        script: |
-          cd /root/bots/okx
-          git pull
-          pm2 reload okx-bot
+    - name: Pull Latest Code & Reload
+      run: |
+        # 2. اذهب إلى مجلد البوت (ده المسار الصحيح)
+        cd /root/bots/okx
+        
+        # 3. اسحب التعديلات الجديدة
+        git pull
+        
+        # 4. أعد تشغيل البوت بـ pm2
+        pm2 reload okx-bot
