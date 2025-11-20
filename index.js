@@ -522,19 +522,20 @@ bot.on("callback_query:data", async (ctx) => {
 });
 
 // =================================================================
-// SECTION 7: STARTUP
+// SECTION 7: STARTUP & WEBSOCKET (Fixed)
 // =================================================================
 
 async function start() {
     await connectDB();
-    console.log("DB Connected.");
+    console.log("✅ DB Connected.");
 
-    setInterval(monitorBalanceChanges, 10000); // Scan every 10s
+    // تشغيل الفحص الدوري للرصيد
+    setInterval(monitorBalanceChanges, 10000); // كل 10 ثواني
     
-    // Daily Report Job (Simple Check)
+    // التقرير اليومي
     setInterval(async () => {
         const now = new Date();
-        if (now.getHours() === 22 && now.getMinutes() === 0) { // 10 PM
+        if (now.getHours() === 22 && now.getMinutes() === 0) { 
             const rep = await formatDailyCopyReport();
             if (!rep.includes("لم يتم")) {
                 await sendMessageSafely(TARGET_CHANNEL_ID, rep);
@@ -542,24 +543,62 @@ async function start() {
         }
     }, 60000);
 
-    const ws = new WebSocket('wss://ws.okx.com:8443/ws/v5/private');
-    ws.on('open', () => {
-        const ts = (Date.now() / 1000).toString();
-        const sign = crypto.createHmac("sha256", OKX_CONFIG.apiSecret).update(ts + 'GET/users/self/verify').digest("base64");
-        ws.send(JSON.stringify({ op: "login", args: [{ apiKey: OKX_CONFIG.apiKey, passphrase: OKX_CONFIG.passphrase, timestamp: ts, sign }] }));
-    });
-    ws.on('message', (data) => {
-        if (data.toString().includes("account")) {
-            clearTimeout(balanceCheckDebounceTimer);
-            balanceCheckDebounceTimer = setTimeout(monitorBalanceChanges, 1000);
-        }
-        const msg = JSON.parse(data);
-        if (msg.event === 'login') ws.send(JSON.stringify({ op: "subscribe", args: [{ channel: "account" }] }));
-    });
+    // --- إعداد الويب سوكت مع PING لمنع الفصل ---
+    function connectWebSocket() {
+        const ws = new WebSocket('wss://ws.okx.com:8443/ws/v5/private');
+        let pingInterval;
+
+        ws.on('open', () => {
+            console.log("🔌 OKX WebSocket Connected");
+            const ts = (Date.now() / 1000).toString();
+            const sign = crypto.createHmac("sha256", OKX_CONFIG.apiSecret).update(ts + 'GET/users/self/verify').digest("base64");
+            
+            // تسجيل الدخول
+            ws.send(JSON.stringify({ op: "login", args: [{ apiKey: OKX_CONFIG.apiKey, passphrase: OKX_CONFIG.passphrase, timestamp: ts, sign }] }));
+            
+            // إرسال Ping كل 20 ثانية للحفاظ على الاتصال
+            pingInterval = setInterval(() => {
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send("ping");
+                }
+            }, 20000);
+        });
+
+        ws.on('message', (data) => {
+            const msgStr = data.toString();
+            if (msgStr === "pong") return; // تجاهل رد البينج
+
+            // عند نجاح تسجيل الدخول، اشترك في القناة
+            const msg = JSON.parse(msgStr);
+            if (msg.event === 'login') {
+                console.log("🔓 Logged in, subscribing...");
+                ws.send(JSON.stringify({ op: "subscribe", args: [{ channel: "account" }] }));
+            }
+
+            // عند وصول تحديث للرصيد
+            if (msgStr.includes("account") && msg.data) {
+                console.log("💰 Balance update detected!");
+                clearTimeout(balanceCheckDebounceTimer);
+                balanceCheckDebounceTimer = setTimeout(monitorBalanceChanges, 1000);
+            }
+        });
+
+        ws.on('close', () => {
+            console.log("⚠️ WebSocket Closed. Reconnecting in 5s...");
+            clearInterval(pingInterval);
+            setTimeout(connectWebSocket, 5000);
+        });
+
+        ws.on('error', (err) => {
+            console.error("❌ WebSocket Error:", err.message);
+        });
+    }
+
+    connectWebSocket(); // تشغيل الاتصال
 
     bot.start({ drop_pending_updates: true });
-    console.log("Bot is Running Securely.");
-    await sendMessageSafely(AUTHORIZED_USER_ID, "✅ *تم تشغيل النظام بنجاح*");
+    console.log("🚀 Bot is Running Securely (Lean Version).");
+    await sendMessageSafely(AUTHORIZED_USER_ID, "✅ *تم تحديث النظام وتشغيله (النسخة الخفيفة)*");
 }
 
 start();
